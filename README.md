@@ -105,6 +105,53 @@ Geteste cases:
 npm run build
 ```
 
+## Deployment met PM2
+
+Deze repo bevat een kant-en-klare PM2 config: `ecosystem.config.cjs`.
+
+### 1. PM2 installeren (op je server)
+
+```bash
+npm i -g pm2
+```
+
+### 2. Build draaien
+
+```bash
+npm ci
+npm run build
+```
+
+### 3. Processes starten
+
+```bash
+npm run pm2:start
+```
+
+### Handige PM2 commando's
+
+```bash
+pm2 status
+pm2 logs route-cost-api
+pm2 logs route-cost-web
+npm run pm2:restart
+npm run pm2:stop
+npm run pm2:delete
+```
+
+### Autostart na reboot
+
+```bash
+pm2 startup
+pm2 save
+```
+
+Standaard draait:
+- API op poort `4000`
+- Web preview op poort `4173`
+
+Voor internettoegang is een reverse proxy (Nginx/Caddy) aanbevolen.
+
 ## API endpoints
 
 ### `GET /api/health`

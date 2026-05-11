@@ -1,6 +1,7 @@
 import type { CalculateRouteRequest, CalculateRouteResponse } from "@route-cost/shared";
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:4000";
+const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? "").replace(/\/+$/, "");
+const ROUTES_ENDPOINT = `${API_BASE_URL}/api/routes/calculate`;
 
 interface ErrorResponse {
   error?: {
@@ -14,7 +15,7 @@ export const calculateRoute = async (
   let response: Response;
 
   try {
-    response = await fetch(`${API_BASE_URL}/api/routes/calculate`, {
+    response = await fetch(ROUTES_ENDPOINT, {
       method: "POST",
       headers: {
         "Content-Type": "application/json"
@@ -24,7 +25,7 @@ export const calculateRoute = async (
   } catch (error) {
     if (error instanceof TypeError) {
       throw new Error(
-        `Kan geen verbinding maken met de API (${API_BASE_URL}). Start de backend met 'npm run dev:api'.`
+        `Kan geen verbinding maken met de API (${ROUTES_ENDPOINT}). Start de backend met 'npm run dev:api'.`
       );
     }
 

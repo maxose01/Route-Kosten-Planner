@@ -11,7 +11,13 @@
     "dev:api": "npm run dev -w @route-cost/api",
     "dev:api:plain": "npm run dev:plain -w @route-cost/api",
     "dev:web": "npm run dev -w @route-cost/web",
-    "build": "npm run build --workspaces",
+    "build": "npm run build -w @route-cost/shared && npm run build -w @route-cost/api && npm run build -w @route-cost/web",
+    "start:api:prod": "npm run start -w @route-cost/api",
+    "start:web:prod": "npm run preview -w @route-cost/web -- --host 0.0.0.0 --port 4173",
+    "pm2:start": "pm2 start ecosystem.config.cjs --env production",
+    "pm2:restart": "pm2 restart ecosystem.config.cjs --env production",
+    "pm2:stop": "pm2 stop ecosystem.config.cjs",
+    "pm2:delete": "pm2 delete ecosystem.config.cjs",
     "test": "npm run test -w @route-cost/api"
   },
   "devDependencies": {
