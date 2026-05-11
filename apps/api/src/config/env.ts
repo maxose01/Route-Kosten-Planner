@@ -21,6 +21,7 @@ if (resolvedEnvPath) {
 const envSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   PORT: z.coerce.number().default(4000),
+  API_HOST: z.string().default("0.0.0.0"),
   CORS_ORIGIN: z.string().default("http://localhost:5173"),
   MAPS_PROVIDER: z.enum(["mapbox", "google", "here", "mock"]).default("mapbox"),
   MAPBOX_ACCESS_TOKEN: z.string().optional(),

@@ -58,6 +58,7 @@ Voorbeeld:
 
 ```env
 PORT=4000
+API_HOST=0.0.0.0
 NODE_ENV=development
 MAPS_PROVIDER=mapbox
 MAPBOX_ACCESS_TOKEN=...
