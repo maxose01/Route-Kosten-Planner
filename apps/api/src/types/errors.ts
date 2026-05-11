@@ -3,6 +3,7 @@ export class AppError extends Error {
     public readonly code:
       | "VALIDATION_ERROR"
       | "ROUTE_NOT_FOUND"
+      | "TRANSIT_NOT_SUPPORTED"
       | "ROUTING_PROVIDER_ERROR"
       | "RATE_LIMITED"
       | "INTERNAL_SERVER_ERROR",

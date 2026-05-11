@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import polyline from "@mapbox/polyline";
-import type { CalculateRouteResponse, TripType } from "@route-cost/shared";
+import type { CalculateRouteResponse, CalculateTransitResponse, TransitTimeType, TripType } from "@route-cost/shared";
 
 import { ErrorNotice } from "./components/ErrorNotice";
 import { DrivingModeOverlay } from "./components/DrivingModeOverlay";
@@ -8,9 +8,10 @@ import { LiveNavigationCard } from "./components/LiveNavigationCard";
 import { ResultCard } from "./components/ResultCard";
 import { RouteForm } from "./components/RouteForm";
 import { RouteMap } from "./components/RouteMap";
+import { TransitResultCard } from "./components/TransitResultCard";
 import { VehicleProfileModal } from "./components/VehicleProfileModal";
 import { useVehicleProfile } from "./hooks/useVehicleProfile";
-import { calculateRoute } from "./services/apiClient";
+import { calculateRoute, calculateTransit } from "./services/apiClient";
 import {
   estimateRemainingDurationSeconds,
   findUpcomingInstructionIndex,
@@ -33,6 +34,32 @@ const OFF_ROUTE_THRESHOLD_METERS = 120;
 const REROUTE_COOLDOWN_MS = 20000;
 const GEO_SECURE_CONTEXT_MESSAGE =
   "Locatie werkt alleen via HTTPS (of localhost). Open de app via een https:// URL om GPS te gebruiken.";
+
+const toLocalDateTimeInput = (value: Date): string => {
+  const year = value.getFullYear();
+  const month = `${value.getMonth() + 1}`.padStart(2, "0");
+  const day = `${value.getDate()}`.padStart(2, "0");
+  const hours = `${value.getHours()}`.padStart(2, "0");
+  const minutes = `${value.getMinutes()}`.padStart(2, "0");
+
+  return `${year}-${month}-${day}T${hours}:${minutes}`;
+};
+
+const getDefaultTransitDateTimeLocal = (): string => {
+  const now = new Date();
+  now.setMinutes(now.getMinutes() + 15, 0, 0);
+  return toLocalDateTimeInput(now);
+};
+
+const parseLocalDateTimeToIso = (value: string): string | null => {
+  const parsed = new Date(value);
+
+  if (Number.isNaN(parsed.getTime())) {
+    return null;
+  }
+
+  return parsed.toISOString();
+};
 
 const isGeolocationAllowedByContext = (): boolean => {
   if (typeof window === "undefined") {
@@ -65,11 +92,16 @@ export const App = () => {
   const [origin, setOrigin] = useState("Den Haag");
   const [destination, setDestination] = useState("Haarlem");
   const [tripType, setTripType] = useState<TripType>("one-way");
+  const [transitTimeType, setTransitTimeType] = useState<TransitTimeType>("departure");
+  const [transitDateTimeLocal, setTransitDateTimeLocal] = useState<string>(() => getDefaultTransitDateTimeLocal());
   const [modalOpen, setModalOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [locatingOrigin, setLocatingOrigin] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<CalculateRouteResponse | null>(null);
+  const [transitResult, setTransitResult] = useState<CalculateTransitResponse | null>(null);
+  const [transitError, setTransitError] = useState<string | null>(null);
+  const [selectedRouteId, setSelectedRouteId] = useState<string>("");
 
   const [navigationActive, setNavigationActive] = useState(false);
   const [permissionState, setPermissionState] = useState<LocationPermissionState>("idle");
@@ -89,25 +121,55 @@ export const App = () => {
 
   const canSubmit = useMemo(() => origin.trim().length > 0 && destination.trim().length > 0, [origin, destination]);
 
+  const activeRouteOption = useMemo(() => {
+    if (!result) {
+      return null;
+    }
+
+    return (
+      result.routeOptions.find((routeOption) => routeOption.id === selectedRouteId) ??
+      result.routeOptions.find((routeOption) => routeOption.id === result.selectedRouteId) ??
+      result.routeOptions[0] ??
+      null
+    );
+  }, [result, selectedRouteId]);
+
+  const activeResult = useMemo(() => {
+    if (!result) {
+      return null;
+    }
+
+    if (!activeRouteOption) {
+      return result;
+    }
+
+    return {
+      ...result,
+      route: activeRouteOption.route,
+      cost: activeRouteOption.cost,
+      selectedRouteId: activeRouteOption.id
+    } satisfies CalculateRouteResponse;
+  }, [result, activeRouteOption]);
+
   const routePoints = useMemo(() => {
-    if (!result?.route.polyline) {
+    if (!activeResult?.route.polyline) {
       return [] as Coordinates[];
     }
 
-    const decoded = polyline.decode(result.route.polyline) as [number, number][];
+    const decoded = polyline.decode(activeResult.route.polyline) as [number, number][];
     return decoded.map(([lat, lng]) => ({ lat, lng }));
-  }, [result?.route.polyline]);
+  }, [activeResult?.route.polyline]);
 
   const liveMetrics = useMemo(() => {
-    if (!currentPosition || routePoints.length < 2 || !result) {
+    if (!currentPosition || routePoints.length < 2 || !activeResult) {
       return null;
     }
 
     const remainingDistanceMeters = getRemainingDistanceMeters(currentPosition, routePoints);
     const remainingDurationSeconds = estimateRemainingDurationSeconds(
       remainingDistanceMeters,
-      result.route.distanceKm,
-      result.route.durationMinutes
+      activeResult.route.distanceKm,
+      activeResult.route.durationMinutes
     );
     const distanceToRouteMeters = getDistanceToRouteMeters(currentPosition, routePoints);
 
@@ -116,9 +178,9 @@ export const App = () => {
       remainingDurationSeconds,
       distanceToRouteMeters
     };
-  }, [currentPosition, routePoints, result]);
+  }, [currentPosition, routePoints, activeResult]);
 
-  const instructions = result?.route.instructions ?? [];
+  const instructions = activeResult?.route.instructions ?? [];
   const currentInstruction = instructions[upcomingInstructionIndex] ?? null;
   const nextInstruction = instructions[upcomingInstructionIndex + 1] ?? null;
 
@@ -149,7 +211,7 @@ export const App = () => {
   };
 
   const startNavigation = () => {
-    if (!result) {
+    if (!activeResult) {
       setGpsError("Bereken eerst een route voordat je navigatie start.");
       return;
     }
@@ -213,20 +275,55 @@ export const App = () => {
       return;
     }
 
+    const transitIsoDateTime = parseLocalDateTimeToIso(transitDateTimeLocal);
+
+    if (!transitIsoDateTime) {
+      setError("Kies een geldige datum en tijd voor de OV-vergelijking.");
+      return;
+    }
+
     try {
       setLoading(true);
       setError(null);
+      setTransitError(null);
+      setTransitResult(null);
 
-      const response = await calculateRoute({
-        origin: origin.trim(),
-        destination: destination.trim(),
-        vehicleProfile: profile,
-        tripType
-      });
+      const [routeOutcome, transitOutcome] = await Promise.allSettled([
+        calculateRoute({
+          origin: origin.trim(),
+          destination: destination.trim(),
+          vehicleProfile: profile,
+          tripType
+        }),
+        calculateTransit({
+          origin: origin.trim(),
+          destination: destination.trim(),
+          dateTime: transitIsoDateTime,
+          timeType: transitTimeType
+        })
+      ]);
 
-      setResult(response);
+      if (routeOutcome.status === "rejected") {
+        throw routeOutcome.reason;
+      }
+
+      const routeResponse = routeOutcome.value;
+
+      setResult(routeResponse);
+      setSelectedRouteId(routeResponse.selectedRouteId);
       setUpcomingInstructionIndex(0);
       announcedInstructionRef.current = null;
+
+      if (transitOutcome.status === "fulfilled") {
+        setTransitResult(transitOutcome.value);
+      } else {
+        const transitErrorMessage =
+          transitOutcome.reason instanceof Error
+            ? transitOutcome.reason.message
+            : "OV-routeopties ophalen mislukt.";
+        setTransitResult(null);
+        setTransitError(transitErrorMessage);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Routeberekening mislukt.");
     } finally {
@@ -340,7 +437,7 @@ export const App = () => {
   }, [navigationActive, currentInstruction, upcomingInstructionIndex]);
 
   useEffect(() => {
-    if (!navigationActive || !currentPosition || !liveMetrics || !result || !offRoute) {
+    if (!navigationActive || !currentPosition || !liveMetrics || !activeResult || !offRoute) {
       return;
     }
 
@@ -367,6 +464,7 @@ export const App = () => {
     })
       .then((response) => {
         setResult(response);
+        setSelectedRouteId(response.selectedRouteId);
         setOrigin(rerouteOrigin);
         setUpcomingInstructionIndex(0);
         announcedInstructionRef.current = null;
@@ -379,7 +477,7 @@ export const App = () => {
         lastRerouteAtRef.current = Date.now();
         setRerouting(false);
       });
-  }, [navigationActive, currentPosition, liveMetrics, result, offRoute, destination, profile, tripType]);
+  }, [navigationActive, currentPosition, liveMetrics, activeResult, offRoute, destination, profile, tripType]);
 
   return (
     <>
@@ -389,6 +487,8 @@ export const App = () => {
             origin={origin}
             destination={destination}
             tripType={tripType}
+            transitDateTimeLocal={transitDateTimeLocal}
+            transitTimeType={transitTimeType}
             profile={profile}
             loading={loading}
             locatingOrigin={locatingOrigin}
@@ -396,6 +496,8 @@ export const App = () => {
               if (input.origin !== undefined) setOrigin(input.origin);
               if (input.destination !== undefined) setDestination(input.destination);
               if (input.tripType !== undefined) setTripType(input.tripType);
+              if (input.transitDateTimeLocal !== undefined) setTransitDateTimeLocal(input.transitDateTimeLocal);
+              if (input.transitTimeType !== undefined) setTransitTimeType(input.transitTimeType);
             }}
             onOpenProfile={() => setModalOpen(true)}
             onUseCurrentLocation={handleUseCurrentLocationAsOrigin}
@@ -403,7 +505,7 @@ export const App = () => {
           />
 
           <LiveNavigationCard
-            hasRoute={Boolean(result)}
+            hasRoute={Boolean(activeResult)}
             navigationActive={navigationActive}
             permissionState={permissionState}
             gpsError={gpsError}
@@ -433,12 +535,30 @@ export const App = () => {
           />
 
           {error && <ErrorNotice message={error} />}
-          {result && <ResultCard result={result} tripType={tripType} />}
+          {result && (
+            <ResultCard
+              result={result}
+              tripType={tripType}
+              selectedRouteId={activeRouteOption?.id ?? selectedRouteId}
+              onSelectRoute={(routeId) => {
+                setSelectedRouteId(routeId);
+                setUpcomingInstructionIndex(0);
+                announcedInstructionRef.current = null;
+              }}
+            />
+          )}
+
+          <TransitResultCard
+            result={transitResult}
+            loading={loading}
+            error={transitError}
+            carCostOneWay={activeResult?.cost.costOneWay ?? null}
+          />
         </div>
 
         <div className="right-column">
           <RouteMap
-            result={result}
+            result={activeResult}
             currentPosition={currentPosition}
             navigationActive={navigationActive}
             offRoute={offRoute}
@@ -455,7 +575,7 @@ export const App = () => {
 
       <DrivingModeOverlay
         active={navigationActive && focusModeActive}
-        result={result}
+        result={activeResult}
         currentPosition={currentPosition}
         navigationActive={navigationActive}
         followPosition={focusFollowPosition}

@@ -2,6 +2,7 @@ import type { NextFunction, Request, Response } from "express";
 import type { CalculateCostRequest, CalculateRouteRequest, CalculateRouteResponse } from "@route-cost/shared";
 
 import { calculateCost } from "../services/costService.js";
+import { buildRouteOptions } from "../services/routeOptionService.js";
 import { getRoutingProvider } from "../services/routing/providerFactory.js";
 import { AppError } from "../types/errors.js";
 import { calculateRouteSchema } from "../validators/routeValidators.js";
@@ -21,22 +22,39 @@ export const calculateRouteController = async (
 
     const payload: CalculateRouteRequest = parsed.data;
     const routingProvider = getRoutingProvider();
-    const route = await routingProvider.calculateRoute(payload.origin, payload.destination);
+    const routes = routingProvider.calculateRouteOptions
+      ? await routingProvider.calculateRouteOptions(payload.origin, payload.destination)
+      : [await routingProvider.calculateRoute(payload.origin, payload.destination)];
+
+    const { routeOptions, selectedRouteId } = buildRouteOptions({
+      routes,
+      vehicleProfile: payload.vehicleProfile,
+      tripType: payload.tripType
+    });
+
+    const selectedRouteOption =
+      routeOptions.find((option) => option.id === selectedRouteId) ?? routeOptions[0] ?? null;
+
+    if (!selectedRouteOption) {
+      throw new AppError("ROUTE_NOT_FOUND", "Geen route gevonden tussen deze locaties.", 404);
+    }
 
     const costInput: CalculateCostRequest = {
-      distanceKm: route.distanceKm,
+      distanceKm: selectedRouteOption.route.distanceKm,
       fuelType: payload.vehicleProfile.fuelType,
-      consumptionPer100Km: payload.vehicleProfile.consumptionPer100Km,
+      consumptionPer100Km: selectedRouteOption.consumptionPer100KmAdjusted,
       energyPrice: payload.vehicleProfile.energyPrice,
       tripType: payload.tripType
     };
 
-    const cost = calculateCost(costInput);
+    const fallbackCost = calculateCost(costInput);
 
     const responseBody: CalculateRouteResponse = {
-      route,
+      route: selectedRouteOption.route,
       vehicleProfile: payload.vehicleProfile,
-      cost
+      cost: selectedRouteOption.cost ?? fallbackCost,
+      routeOptions,
+      selectedRouteId: selectedRouteOption.id
     };
 
     response.status(200).json(responseBody);

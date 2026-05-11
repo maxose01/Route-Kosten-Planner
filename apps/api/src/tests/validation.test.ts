@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { calculateCostSchema } from "../validators/costValidators.js";
+import { calculateTransitSchema } from "../validators/transitValidators.js";
 
 describe("calculateCost validation", () => {
   it("geeft validatiefout voor ongeldige waarden", () => {
@@ -17,5 +18,18 @@ describe("calculateCost validation", () => {
     if (!parsed.success) {
       expect(parsed.error.issues.length).toBeGreaterThan(0);
     }
+  });
+});
+
+describe("calculateTransit validation", () => {
+  it("geeft validatiefout voor ongeldige datum/tijd", () => {
+    const parsed = calculateTransitSchema.safeParse({
+      origin: "Den Haag",
+      destination: "Haarlem",
+      dateTime: "geen-datum",
+      timeType: "departure"
+    });
+
+    expect(parsed.success).toBe(false);
   });
 });

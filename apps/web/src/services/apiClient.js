@@ -1,5 +1,6 @@
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? "").replace(/\/+$/, "");
 const ROUTES_ENDPOINT = `${API_BASE_URL}/api/routes/calculate`;
+const TRANSIT_ENDPOINT = `${API_BASE_URL}/api/transit/calculate`;
 const LOCATION_SUGGESTIONS_ENDPOINT = `${API_BASE_URL}/api/locations/suggest`;
 export const calculateRoute = async (payload) => {
     let response;
@@ -21,6 +22,29 @@ export const calculateRoute = async (payload) => {
     if (!response.ok) {
         const errorData = (await response.json().catch(() => null));
         throw new Error(errorData?.error?.message ?? "Routeberekening mislukt.");
+    }
+    return (await response.json());
+};
+export const calculateTransit = async (payload) => {
+    let response;
+    try {
+        response = await fetch(TRANSIT_ENDPOINT, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify(payload)
+        });
+    }
+    catch (error) {
+        if (error instanceof TypeError) {
+            throw new Error(`Kan geen verbinding maken met de API (${TRANSIT_ENDPOINT}). Start de backend met 'npm run dev:api'.`);
+        }
+        throw error;
+    }
+    if (!response.ok) {
+        const errorData = (await response.json().catch(() => null));
+        throw new Error(errorData?.error?.message ?? "OV-routeberekening mislukt.");
     }
     return (await response.json());
 };

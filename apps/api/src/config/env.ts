@@ -26,7 +26,8 @@ const envSchema = z.object({
   MAPS_PROVIDER: z.enum(["mapbox", "google", "here", "mock"]).default("mapbox"),
   MAPBOX_ACCESS_TOKEN: z.string().optional(),
   GOOGLE_MAPS_API_KEY: z.string().optional(),
-  HERE_API_KEY: z.string().optional()
+  HERE_API_KEY: z.string().optional(),
+  TRANSIT_API_BASE_URL: z.string().url().default("https://api.transitous.org")
 });
 
 export const env = envSchema.parse(process.env);

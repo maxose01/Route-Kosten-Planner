@@ -1,4 +1,9 @@
-import type { LocationSuggestion, RouteInstruction, RouteResult } from "@route-cost/shared";
+import type {
+  LocationSuggestion,
+  RouteEfficiencyProfile,
+  RouteInstruction,
+  RouteResult
+} from "@route-cost/shared";
 
 import { env } from "../../config/env.js";
 import { AppError } from "../../types/errors.js";
@@ -28,6 +33,11 @@ interface DirectionsStep {
 
 interface DirectionsLeg {
   steps: DirectionsStep[];
+  annotation?: {
+    speed?: number[];
+    distance?: number[];
+    duration?: number[];
+  };
 }
 
 interface DirectionsRoute {
@@ -63,6 +73,11 @@ export class MapboxRoutingProvider implements RoutingProvider {
   }
 
   async calculateRoute(origin: string, destination: string): Promise<RouteResult> {
+    const routes = await this.calculateRouteOptions(origin, destination);
+    return routes[0];
+  }
+
+  async calculateRouteOptions(origin: string, destination: string): Promise<RouteResult[]> {
     const originCoordinates = await this.resolveCoordinates(origin);
     const destinationCoordinates = await this.resolveCoordinates(destination);
 
@@ -72,8 +87,9 @@ export class MapboxRoutingProvider implements RoutingProvider {
 
     routeUrl.searchParams.set("overview", "full");
     routeUrl.searchParams.set("geometries", "polyline");
-    routeUrl.searchParams.set("alternatives", "false");
+    routeUrl.searchParams.set("alternatives", "true");
     routeUrl.searchParams.set("steps", "true");
+    routeUrl.searchParams.set("annotations", "speed,distance,duration");
     routeUrl.searchParams.set("language", "nl");
     routeUrl.searchParams.set("roundabout_exits", "true");
     routeUrl.searchParams.set("access_token", this.token);
@@ -96,22 +112,13 @@ export class MapboxRoutingProvider implements RoutingProvider {
       throw new AppError("ROUTE_NOT_FOUND", "Geen route gevonden tussen deze locaties.", 404);
     }
 
-    const firstRoute = directionsData.routes?.[0];
+    const routes = directionsData.routes ?? [];
 
-    if (!firstRoute) {
+    if (routes.length === 0) {
       throw new AppError("ROUTE_NOT_FOUND", "Geen route gevonden tussen deze locaties.", 404);
     }
 
-    const instructions = this.mapInstructions(firstRoute.legs);
-
-    return {
-      origin,
-      destination,
-      distanceKm: Math.round((firstRoute.distance / 1000) * 10) / 10,
-      durationMinutes: Math.max(1, Math.round(firstRoute.duration / 60)),
-      polyline: firstRoute.geometry,
-      instructions
-    };
+    return routes.map((route) => this.mapRouteResult(route, origin, destination));
   }
 
   async suggestLocations(query: string, limit: number): Promise<LocationSuggestion[]> {
@@ -207,6 +214,74 @@ export class MapboxRoutingProvider implements RoutingProvider {
     }
 
     return instructions;
+  }
+
+  private mapRouteResult(route: DirectionsRoute, origin: string, destination: string): RouteResult {
+    const instructions = this.mapInstructions(route.legs);
+
+    return {
+      origin,
+      destination,
+      distanceKm: Math.round((route.distance / 1000) * 10) / 10,
+      durationMinutes: Math.max(1, Math.round(route.duration / 60)),
+      polyline: route.geometry,
+      instructions,
+      efficiencyProfile: this.mapEfficiencyProfile(route)
+    };
+  }
+
+  private mapEfficiencyProfile(route: DirectionsRoute): RouteEfficiencyProfile {
+    const totalDistanceMeters = Math.max(route.distance, 1);
+    const averageSpeedKmh = Math.max(1, Math.round((route.distance / Math.max(route.duration, 1)) * 3.6));
+    let weightedSpeedDistanceMeters = 0;
+    let weightedSpeedSum = 0;
+    let highwayDistanceMeters = 0;
+    let urbanDistanceMeters = 0;
+
+    for (const leg of route.legs ?? []) {
+      const distances = leg.annotation?.distance ?? [];
+      const speeds = leg.annotation?.speed ?? [];
+      const segmentCount = Math.min(distances.length, speeds.length);
+
+      for (let index = 0; index < segmentCount; index += 1) {
+        const segmentDistance = distances[index];
+        const segmentSpeedMs = speeds[index];
+
+        if (!Number.isFinite(segmentDistance) || segmentDistance <= 0 || !Number.isFinite(segmentSpeedMs)) {
+          continue;
+        }
+
+        const segmentSpeedKmh = segmentSpeedMs * 3.6;
+        weightedSpeedDistanceMeters += segmentDistance;
+        weightedSpeedSum += segmentSpeedKmh * segmentDistance;
+
+        if (segmentSpeedKmh >= 78) {
+          highwayDistanceMeters += segmentDistance;
+        } else if (segmentSpeedKmh <= 45) {
+          urbanDistanceMeters += segmentDistance;
+        }
+      }
+    }
+
+    if (weightedSpeedDistanceMeters > 0) {
+      const weightedAverageSpeed = weightedSpeedSum / weightedSpeedDistanceMeters;
+      const adjustedAverageSpeed = Math.max(1, Math.round(weightedAverageSpeed));
+
+      return {
+        averageSpeedKmh: adjustedAverageSpeed,
+        highwayShare: Math.min(1, Math.max(0, highwayDistanceMeters / totalDistanceMeters)),
+        urbanShare: Math.min(1, Math.max(0, urbanDistanceMeters / totalDistanceMeters))
+      };
+    }
+
+    const fallbackHighwayShare = averageSpeedKmh >= 85 ? 0.72 : averageSpeedKmh >= 65 ? 0.5 : 0.3;
+    const fallbackUrbanShare = averageSpeedKmh <= 35 ? 0.68 : averageSpeedKmh <= 55 ? 0.45 : 0.22;
+
+    return {
+      averageSpeedKmh,
+      highwayShare: fallbackHighwayShare,
+      urbanShare: Math.min(1, fallbackUrbanShare)
+    };
   }
 
   private async geocode(location: string): Promise<[number, number]> {

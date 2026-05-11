@@ -7,13 +7,34 @@ import { LiveNavigationCard } from "./components/LiveNavigationCard";
 import { ResultCard } from "./components/ResultCard";
 import { RouteForm } from "./components/RouteForm";
 import { RouteMap } from "./components/RouteMap";
+import { TransitResultCard } from "./components/TransitResultCard";
 import { VehicleProfileModal } from "./components/VehicleProfileModal";
 import { useVehicleProfile } from "./hooks/useVehicleProfile";
-import { calculateRoute } from "./services/apiClient";
+import { calculateRoute, calculateTransit } from "./services/apiClient";
 import { estimateRemainingDurationSeconds, findUpcomingInstructionIndex, getDistanceToRouteMeters, getRemainingDistanceMeters, haversineDistanceMeters, toCoordinateInput } from "./utils/navigation";
 const OFF_ROUTE_THRESHOLD_METERS = 120;
 const REROUTE_COOLDOWN_MS = 20000;
 const GEO_SECURE_CONTEXT_MESSAGE = "Locatie werkt alleen via HTTPS (of localhost). Open de app via een https:// URL om GPS te gebruiken.";
+const toLocalDateTimeInput = (value) => {
+    const year = value.getFullYear();
+    const month = `${value.getMonth() + 1}`.padStart(2, "0");
+    const day = `${value.getDate()}`.padStart(2, "0");
+    const hours = `${value.getHours()}`.padStart(2, "0");
+    const minutes = `${value.getMinutes()}`.padStart(2, "0");
+    return `${year}-${month}-${day}T${hours}:${minutes}`;
+};
+const getDefaultTransitDateTimeLocal = () => {
+    const now = new Date();
+    now.setMinutes(now.getMinutes() + 15, 0, 0);
+    return toLocalDateTimeInput(now);
+};
+const parseLocalDateTimeToIso = (value) => {
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) {
+        return null;
+    }
+    return parsed.toISOString();
+};
 const isGeolocationAllowedByContext = () => {
     if (typeof window === "undefined") {
         return true;
@@ -40,11 +61,16 @@ export const App = () => {
     const [origin, setOrigin] = useState("Den Haag");
     const [destination, setDestination] = useState("Haarlem");
     const [tripType, setTripType] = useState("one-way");
+    const [transitTimeType, setTransitTimeType] = useState("departure");
+    const [transitDateTimeLocal, setTransitDateTimeLocal] = useState(() => getDefaultTransitDateTimeLocal());
     const [modalOpen, setModalOpen] = useState(false);
     const [loading, setLoading] = useState(false);
     const [locatingOrigin, setLocatingOrigin] = useState(false);
     const [error, setError] = useState(null);
     const [result, setResult] = useState(null);
+    const [transitResult, setTransitResult] = useState(null);
+    const [transitError, setTransitError] = useState(null);
+    const [selectedRouteId, setSelectedRouteId] = useState("");
     const [navigationActive, setNavigationActive] = useState(false);
     const [permissionState, setPermissionState] = useState("idle");
     const [gpsError, setGpsError] = useState(null);
@@ -60,27 +86,50 @@ export const App = () => {
     const lastRerouteAtRef = useRef(0);
     const announcedInstructionRef = useRef(null);
     const canSubmit = useMemo(() => origin.trim().length > 0 && destination.trim().length > 0, [origin, destination]);
+    const activeRouteOption = useMemo(() => {
+        if (!result) {
+            return null;
+        }
+        return (result.routeOptions.find((routeOption) => routeOption.id === selectedRouteId) ??
+            result.routeOptions.find((routeOption) => routeOption.id === result.selectedRouteId) ??
+            result.routeOptions[0] ??
+            null);
+    }, [result, selectedRouteId]);
+    const activeResult = useMemo(() => {
+        if (!result) {
+            return null;
+        }
+        if (!activeRouteOption) {
+            return result;
+        }
+        return {
+            ...result,
+            route: activeRouteOption.route,
+            cost: activeRouteOption.cost,
+            selectedRouteId: activeRouteOption.id
+        };
+    }, [result, activeRouteOption]);
     const routePoints = useMemo(() => {
-        if (!result?.route.polyline) {
+        if (!activeResult?.route.polyline) {
             return [];
         }
-        const decoded = polyline.decode(result.route.polyline);
+        const decoded = polyline.decode(activeResult.route.polyline);
         return decoded.map(([lat, lng]) => ({ lat, lng }));
-    }, [result?.route.polyline]);
+    }, [activeResult?.route.polyline]);
     const liveMetrics = useMemo(() => {
-        if (!currentPosition || routePoints.length < 2 || !result) {
+        if (!currentPosition || routePoints.length < 2 || !activeResult) {
             return null;
         }
         const remainingDistanceMeters = getRemainingDistanceMeters(currentPosition, routePoints);
-        const remainingDurationSeconds = estimateRemainingDurationSeconds(remainingDistanceMeters, result.route.distanceKm, result.route.durationMinutes);
+        const remainingDurationSeconds = estimateRemainingDurationSeconds(remainingDistanceMeters, activeResult.route.distanceKm, activeResult.route.durationMinutes);
         const distanceToRouteMeters = getDistanceToRouteMeters(currentPosition, routePoints);
         return {
             remainingDistanceMeters,
             remainingDurationSeconds,
             distanceToRouteMeters
         };
-    }, [currentPosition, routePoints, result]);
-    const instructions = result?.route.instructions ?? [];
+    }, [currentPosition, routePoints, activeResult]);
+    const instructions = activeResult?.route.instructions ?? [];
     const currentInstruction = instructions[upcomingInstructionIndex] ?? null;
     const nextInstruction = instructions[upcomingInstructionIndex + 1] ?? null;
     const distanceToInstructionMeters = useMemo(() => {
@@ -104,7 +153,7 @@ export const App = () => {
         setFocusFollowPosition(true);
     };
     const startNavigation = () => {
-        if (!result) {
+        if (!activeResult) {
             setGpsError("Bereken eerst een route voordat je navigatie start.");
             return;
         }
@@ -154,18 +203,48 @@ export const App = () => {
             setError("Vul zowel vertrek als bestemming in.");
             return;
         }
+        const transitIsoDateTime = parseLocalDateTimeToIso(transitDateTimeLocal);
+        if (!transitIsoDateTime) {
+            setError("Kies een geldige datum en tijd voor de OV-vergelijking.");
+            return;
+        }
         try {
             setLoading(true);
             setError(null);
-            const response = await calculateRoute({
-                origin: origin.trim(),
-                destination: destination.trim(),
-                vehicleProfile: profile,
-                tripType
-            });
-            setResult(response);
+            setTransitError(null);
+            setTransitResult(null);
+            const [routeOutcome, transitOutcome] = await Promise.allSettled([
+                calculateRoute({
+                    origin: origin.trim(),
+                    destination: destination.trim(),
+                    vehicleProfile: profile,
+                    tripType
+                }),
+                calculateTransit({
+                    origin: origin.trim(),
+                    destination: destination.trim(),
+                    dateTime: transitIsoDateTime,
+                    timeType: transitTimeType
+                })
+            ]);
+            if (routeOutcome.status === "rejected") {
+                throw routeOutcome.reason;
+            }
+            const routeResponse = routeOutcome.value;
+            setResult(routeResponse);
+            setSelectedRouteId(routeResponse.selectedRouteId);
             setUpcomingInstructionIndex(0);
             announcedInstructionRef.current = null;
+            if (transitOutcome.status === "fulfilled") {
+                setTransitResult(transitOutcome.value);
+            }
+            else {
+                const transitErrorMessage = transitOutcome.reason instanceof Error
+                    ? transitOutcome.reason.message
+                    : "OV-routeopties ophalen mislukt.";
+                setTransitResult(null);
+                setTransitError(transitErrorMessage);
+            }
         }
         catch (err) {
             setError(err instanceof Error ? err.message : "Routeberekening mislukt.");
@@ -256,7 +335,7 @@ export const App = () => {
         announcedInstructionRef.current = upcomingInstructionIndex;
     }, [navigationActive, currentInstruction, upcomingInstructionIndex]);
     useEffect(() => {
-        if (!navigationActive || !currentPosition || !liveMetrics || !result || !offRoute) {
+        if (!navigationActive || !currentPosition || !liveMetrics || !activeResult || !offRoute) {
             return;
         }
         if (destination.trim().length === 0) {
@@ -277,6 +356,7 @@ export const App = () => {
         })
             .then((response) => {
             setResult(response);
+            setSelectedRouteId(response.selectedRouteId);
             setOrigin(rerouteOrigin);
             setUpcomingInstructionIndex(0);
             announcedInstructionRef.current = null;
@@ -289,15 +369,19 @@ export const App = () => {
             lastRerouteAtRef.current = Date.now();
             setRerouting(false);
         });
-    }, [navigationActive, currentPosition, liveMetrics, result, offRoute, destination, profile, tripType]);
-    return (_jsxs(_Fragment, { children: [_jsxs("div", { className: "layout", children: [_jsxs("div", { className: "left-column", children: [_jsx(RouteForm, { origin: origin, destination: destination, tripType: tripType, profile: profile, loading: loading, locatingOrigin: locatingOrigin, onChange: (input) => {
+    }, [navigationActive, currentPosition, liveMetrics, activeResult, offRoute, destination, profile, tripType]);
+    return (_jsxs(_Fragment, { children: [_jsxs("div", { className: "layout", children: [_jsxs("div", { className: "left-column", children: [_jsx(RouteForm, { origin: origin, destination: destination, tripType: tripType, transitDateTimeLocal: transitDateTimeLocal, transitTimeType: transitTimeType, profile: profile, loading: loading, locatingOrigin: locatingOrigin, onChange: (input) => {
                                     if (input.origin !== undefined)
                                         setOrigin(input.origin);
                                     if (input.destination !== undefined)
                                         setDestination(input.destination);
                                     if (input.tripType !== undefined)
                                         setTripType(input.tripType);
-                                }, onOpenProfile: () => setModalOpen(true), onUseCurrentLocation: handleUseCurrentLocationAsOrigin, onSubmit: handleCalculate }), _jsx(LiveNavigationCard, { hasRoute: Boolean(result), navigationActive: navigationActive, permissionState: permissionState, gpsError: gpsError, currentInstruction: currentInstruction, nextInstruction: nextInstruction, remainingDistanceKm: liveMetrics ? liveMetrics.remainingDistanceMeters / 1000 : null, remainingDurationMinutes: liveMetrics ? liveMetrics.remainingDurationSeconds / 60 : null, speedKmh: currentPosition?.speedKmh ?? null, distanceToInstructionMeters: distanceToInstructionMeters, offRoute: offRoute, rerouting: rerouting, focusModeActive: focusModeActive, onStart: startNavigation, onStop: stopNavigation, onToggleFocusMode: () => {
+                                    if (input.transitDateTimeLocal !== undefined)
+                                        setTransitDateTimeLocal(input.transitDateTimeLocal);
+                                    if (input.transitTimeType !== undefined)
+                                        setTransitTimeType(input.transitTimeType);
+                                }, onOpenProfile: () => setModalOpen(true), onUseCurrentLocation: handleUseCurrentLocationAsOrigin, onSubmit: handleCalculate }), _jsx(LiveNavigationCard, { hasRoute: Boolean(activeResult), navigationActive: navigationActive, permissionState: permissionState, gpsError: gpsError, currentInstruction: currentInstruction, nextInstruction: nextInstruction, remainingDistanceKm: liveMetrics ? liveMetrics.remainingDistanceMeters / 1000 : null, remainingDurationMinutes: liveMetrics ? liveMetrics.remainingDurationSeconds / 60 : null, speedKmh: currentPosition?.speedKmh ?? null, distanceToInstructionMeters: distanceToInstructionMeters, offRoute: offRoute, rerouting: rerouting, focusModeActive: focusModeActive, onStart: startNavigation, onStop: stopNavigation, onToggleFocusMode: () => {
                                     setFocusModeActive((value) => {
                                         const nextValue = !value;
                                         if (nextValue) {
@@ -306,7 +390,11 @@ export const App = () => {
                                         }
                                         return nextValue;
                                     });
-                                } }), error && _jsx(ErrorNotice, { message: error }), result && _jsx(ResultCard, { result: result, tripType: tripType })] }), _jsx("div", { className: "right-column", children: _jsx(RouteMap, { result: result, currentPosition: currentPosition, navigationActive: navigationActive, offRoute: offRoute }) })] }), _jsx(VehicleProfileModal, { open: modalOpen, initialValue: profile, onClose: () => setModalOpen(false), onSave: (newProfile) => setProfile(newProfile) }), _jsx(DrivingModeOverlay, { active: navigationActive && focusModeActive, result: result, currentPosition: currentPosition, navigationActive: navigationActive, followPosition: focusFollowPosition, recenterToken: focusRecenterToken, orientationMode: orientationMode, onToggleOrientation: () => setOrientationMode((mode) => (mode === "track-up" ? "north-up" : "track-up")), onMapInteraction: () => setFocusFollowPosition(false), onRecenter: () => {
+                                } }), error && _jsx(ErrorNotice, { message: error }), result && (_jsx(ResultCard, { result: result, tripType: tripType, selectedRouteId: activeRouteOption?.id ?? selectedRouteId, onSelectRoute: (routeId) => {
+                                    setSelectedRouteId(routeId);
+                                    setUpcomingInstructionIndex(0);
+                                    announcedInstructionRef.current = null;
+                                } })), _jsx(TransitResultCard, { result: transitResult, loading: loading, error: transitError, carCostOneWay: activeResult?.cost.costOneWay ?? null })] }), _jsx("div", { className: "right-column", children: _jsx(RouteMap, { result: activeResult, currentPosition: currentPosition, navigationActive: navigationActive, offRoute: offRoute }) })] }), _jsx(VehicleProfileModal, { open: modalOpen, initialValue: profile, onClose: () => setModalOpen(false), onSave: (newProfile) => setProfile(newProfile) }), _jsx(DrivingModeOverlay, { active: navigationActive && focusModeActive, result: activeResult, currentPosition: currentPosition, navigationActive: navigationActive, followPosition: focusFollowPosition, recenterToken: focusRecenterToken, orientationMode: orientationMode, onToggleOrientation: () => setOrientationMode((mode) => (mode === "track-up" ? "north-up" : "track-up")), onMapInteraction: () => setFocusFollowPosition(false), onRecenter: () => {
                     setFocusFollowPosition(true);
                     setFocusRecenterToken((token) => token + 1);
                 }, offRoute: offRoute, rerouting: rerouting, currentInstruction: currentInstruction, nextInstruction: nextInstruction, distanceToInstructionMeters: distanceToInstructionMeters, remainingDistanceKm: liveMetrics ? liveMetrics.remainingDistanceMeters / 1000 : null, remainingDurationMinutes: liveMetrics ? liveMetrics.remainingDurationSeconds / 60 : null, speedKmh: currentPosition?.speedKmh ?? null, onStopNavigation: stopNavigation })] }));

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import type { KeyboardEventHandler } from "react";
-import type { LocationSuggestion, TripType, VehicleProfile } from "@route-cost/shared";
+import type { LocationSuggestion, TransitTimeType, TripType, VehicleProfile } from "@route-cost/shared";
 
 import { fetchLocationSuggestions } from "../services/apiClient";
 
@@ -11,10 +11,18 @@ interface RouteFormProps {
   origin: string;
   destination: string;
   tripType: TripType;
+  transitDateTimeLocal: string;
+  transitTimeType: TransitTimeType;
   profile: VehicleProfile;
   loading: boolean;
   locatingOrigin: boolean;
-  onChange: (input: { origin?: string; destination?: string; tripType?: TripType }) => void;
+  onChange: (input: {
+    origin?: string;
+    destination?: string;
+    tripType?: TripType;
+    transitDateTimeLocal?: string;
+    transitTimeType?: TransitTimeType;
+  }) => void;
   onOpenProfile: () => void;
   onUseCurrentLocation: () => void;
   onSubmit: () => void;
@@ -24,6 +32,8 @@ export const RouteForm = ({
   origin,
   destination,
   tripType,
+  transitDateTimeLocal,
+  transitTimeType,
   profile,
   loading,
   locatingOrigin,
@@ -157,7 +167,7 @@ export const RouteForm = ({
         Naar
         <div className="autocomplete">
           <input
-            placeholder="Bijv. Haarlem"
+            placeholder="Wat is je bestemming?"
             value={destination}
             autoComplete="off"
             onFocus={() => setDestinationSuggestionsOpen(true)}
@@ -218,6 +228,36 @@ export const RouteForm = ({
           </button>
         </div>
       </fieldset>
+
+      <fieldset>
+        <legend>OV planning</legend>
+        <div className="segment">
+          <button
+            type="button"
+            className={transitTimeType === "departure" ? "segment-active" : ""}
+            onClick={() => onChange({ transitTimeType: "departure" })}
+          >
+            Vertrek om
+          </button>
+          <button
+            type="button"
+            className={transitTimeType === "arrival" ? "segment-active" : ""}
+            onClick={() => onChange({ transitTimeType: "arrival" })}
+          >
+            Aankomst om
+          </button>
+        </div>
+      </fieldset>
+
+      <label>
+        Datum en tijd
+        <input
+          type="datetime-local"
+          value={transitDateTimeLocal}
+          onChange={(event) => onChange({ transitDateTimeLocal: event.target.value })}
+        />
+      </label>
+      <p className="muted form-helper">Nodig om OV-routes en prijzen te vergelijken.</p>
 
       <div className="profile-summary">
         <div>

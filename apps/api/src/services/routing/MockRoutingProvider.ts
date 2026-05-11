@@ -18,52 +18,106 @@ export class MockRoutingProvider implements RoutingProvider {
   }
 
   async calculateRoute(origin: string, destination: string): Promise<RouteResult> {
-    return {
-      origin,
-      destination,
-      distanceKm: 48.2,
-      durationMinutes: 45,
-      polyline: "w~qiHteyx@_seAoqxB",
-      instructions: [
-        {
-          index: 0,
-          instruction: "Vertrek richting noordoost.",
-          distanceMeters: 2200,
-          durationSeconds: 240,
-          maneuverType: "depart",
-          roadName: "Centrumring",
-          location: { lat: 52.0705, lng: 4.3007 }
-        },
-        {
-          index: 1,
-          instruction: "Sla rechtsaf richting de A4.",
-          distanceMeters: 15200,
-          durationSeconds: 780,
-          maneuverType: "turn",
-          maneuverModifier: "right",
-          roadName: "A4",
-          location: { lat: 52.1097, lng: 4.3292 }
-        },
-        {
-          index: 2,
-          instruction: "Volg de weg richting Haarlem.",
-          distanceMeters: 26400,
-          durationSeconds: 1380,
-          maneuverType: "continue",
-          maneuverModifier: "straight",
-          roadName: "A9",
-          location: { lat: 52.2964, lng: 4.6698 }
-        },
-        {
-          index: 3,
-          instruction: "Je bent gearriveerd op je bestemming.",
-          distanceMeters: 0,
-          durationSeconds: 0,
-          maneuverType: "arrive",
-          roadName: "Haarlem",
-          location: { lat: 52.3874, lng: 4.6462 }
+    const routes = await this.calculateRouteOptions(origin, destination);
+    return routes[0];
+  }
+
+  async calculateRouteOptions(origin: string, destination: string): Promise<RouteResult[]> {
+    return [
+      {
+        origin,
+        destination,
+        distanceKm: 48.2,
+        durationMinutes: 45,
+        polyline: "w~qiHteyx@_seAoqxB",
+        instructions: [
+          {
+            index: 0,
+            instruction: "Vertrek richting noordoost.",
+            distanceMeters: 2200,
+            durationSeconds: 240,
+            maneuverType: "depart",
+            roadName: "Centrumring",
+            location: { lat: 52.0705, lng: 4.3007 }
+          },
+          {
+            index: 1,
+            instruction: "Sla rechtsaf richting de A4.",
+            distanceMeters: 15200,
+            durationSeconds: 780,
+            maneuverType: "turn",
+            maneuverModifier: "right",
+            roadName: "A4",
+            location: { lat: 52.1097, lng: 4.3292 }
+          },
+          {
+            index: 2,
+            instruction: "Volg de weg richting Haarlem.",
+            distanceMeters: 26400,
+            durationSeconds: 1380,
+            maneuverType: "continue",
+            maneuverModifier: "straight",
+            roadName: "A9",
+            location: { lat: 52.2964, lng: 4.6698 }
+          },
+          {
+            index: 3,
+            instruction: "Je bent gearriveerd op je bestemming.",
+            distanceMeters: 0,
+            durationSeconds: 0,
+            maneuverType: "arrive",
+            roadName: "Haarlem",
+            location: { lat: 52.3874, lng: 4.6462 }
+          }
+        ],
+        efficiencyProfile: {
+          averageSpeedKmh: 64,
+          highwayShare: 0.58,
+          urbanShare: 0.21
         }
-      ]
-    };
+      },
+      {
+        origin,
+        destination,
+        distanceKm: 45.7,
+        durationMinutes: 49,
+        polyline: "w~qiHteyx@_seAoqxB",
+        instructions: [
+          {
+            index: 0,
+            instruction: "Vertrek richting centrum.",
+            distanceMeters: 1500,
+            durationSeconds: 220,
+            maneuverType: "depart",
+            roadName: "Centrumring",
+            location: { lat: 52.0705, lng: 4.3007 }
+          },
+          {
+            index: 1,
+            instruction: "Volg binnenwegen richting Haarlem.",
+            distanceMeters: 33200,
+            durationSeconds: 2200,
+            maneuverType: "continue",
+            maneuverModifier: "straight",
+            roadName: "N-wegen",
+            location: { lat: 52.2015, lng: 4.5401 }
+          },
+          {
+            index: 2,
+            instruction: "Je bent gearriveerd op je bestemming.",
+            distanceMeters: 0,
+            durationSeconds: 0,
+            maneuverType: "arrive",
+            roadName: "Haarlem",
+            location: { lat: 52.3874, lng: 4.6462 }
+          }
+        ],
+        efficiencyProfile: {
+          averageSpeedKmh: 51,
+          highwayShare: 0.24,
+          urbanShare: 0.49
+        }
+      }
+    ];
   }
 }

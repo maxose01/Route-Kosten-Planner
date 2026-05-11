@@ -26,6 +26,8 @@ De frontend bevat geen geheime API keys. Routing calls gaan via de backend.
 - Live rijmodus met GPS tracking
 - Automatische herroutering bij route-afwijking
 - Nederlandse gesproken instructies (browser speech synthesis)
+- OV-vergelijking (Nederland) met meerdere OV-routeopties
+- OV-planning op vertrek- of aankomsttijd + datum
 - Validatie en foutafhandeling
 - Rate limiting op route-endpoint
 - Unit tests voor kostenberekening
@@ -62,6 +64,7 @@ API_HOST=0.0.0.0
 NODE_ENV=development
 MAPS_PROVIDER=mapbox
 MAPBOX_ACCESS_TOKEN=...
+TRANSIT_API_BASE_URL=https://api.transitous.org
 CORS_ORIGIN=http://localhost:5173
 ```
 
@@ -205,6 +208,45 @@ Request:
     "energyPrice": 2.1
   },
   "tripType": "one-way"
+}
+```
+
+### `POST /api/transit/calculate`
+
+Request:
+
+```json
+{
+  "origin": "Den Haag",
+  "destination": "Haarlem",
+  "dateTime": "2026-05-11T10:00:00.000Z",
+  "timeType": "departure"
+}
+```
+
+Response (voorbeeld):
+
+```json
+{
+  "country": "NL",
+  "origin": "Den Haag",
+  "destination": "Haarlem",
+  "dateTime": "2026-05-11T10:00:00.000Z",
+  "timeType": "departure",
+  "options": [
+    {
+      "id": "ov-option-1",
+      "departureTime": "2026-05-11T10:01:00Z",
+      "arrivalTime": "2026-05-11T11:02:00Z",
+      "durationMinutes": 61,
+      "transfers": 1,
+      "estimatedCost": 12.73,
+      "currency": "EUR",
+      "fareSource": "estimated",
+      "summary": "Tram + Trein • 1 overstap"
+    }
+  ],
+  "disclaimer": "OV-kosten zijn geschat op basis van beschikbare tariefdata en landelijke kilometertarieven. Werkelijke prijzen kunnen per vervoerder of abonnement afwijken."
 }
 ```
 
