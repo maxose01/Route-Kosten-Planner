@@ -29,6 +29,7 @@ interface LivePosition extends Coordinates {
 }
 
 type LocationPermissionState = "idle" | "granted" | "denied" | "unsupported";
+type PlannerView = "navigate" | "compare";
 
 const OFF_ROUTE_THRESHOLD_METERS = 120;
 const REROUTE_COOLDOWN_MS = 20000;
@@ -59,6 +60,13 @@ const parseLocalDateTimeToIso = (value: string): string | null => {
   }
 
   return parsed.toISOString();
+};
+
+const formatCurrency = (value: number): string => {
+  return new Intl.NumberFormat("nl-NL", {
+    style: "currency",
+    currency: "EUR"
+  }).format(value);
 };
 
 const isGeolocationAllowedByContext = (): boolean => {
@@ -102,6 +110,7 @@ export const App = () => {
   const [transitResult, setTransitResult] = useState<CalculateTransitResponse | null>(null);
   const [transitError, setTransitError] = useState<string | null>(null);
   const [selectedRouteId, setSelectedRouteId] = useState<string>("");
+  const [plannerView, setPlannerView] = useState<PlannerView>("navigate");
 
   const [navigationActive, setNavigationActive] = useState(false);
   const [permissionState, setPermissionState] = useState<LocationPermissionState>("idle");
@@ -159,6 +168,28 @@ export const App = () => {
     const decoded = polyline.decode(activeResult.route.polyline) as [number, number][];
     return decoded.map(([lat, lng]) => ({ lat, lng }));
   }, [activeResult?.route.polyline]);
+
+  const cheapestTransitOption = useMemo(() => {
+    if (!transitResult?.options.length) {
+      return null;
+    }
+
+    return transitResult.options.reduce((cheapest, option) => {
+      if (!cheapest || option.estimatedCost < cheapest.estimatedCost) {
+        return option;
+      }
+
+      return cheapest;
+    }, transitResult.options[0]);
+  }, [transitResult]);
+
+  const compareDelta = useMemo(() => {
+    if (!activeResult || !cheapestTransitOption) {
+      return null;
+    }
+
+    return cheapestTransitOption.estimatedCost - activeResult.cost.costOneWay;
+  }, [activeResult, cheapestTransitOption]);
 
   const liveMetrics = useMemo(() => {
     if (!currentPosition || routePoints.length < 2 || !activeResult) {
@@ -483,12 +514,65 @@ export const App = () => {
     <>
       <div className="layout">
         <div className="left-column">
+          <section className="card planner-view-card">
+            <div>
+              <p className="result-label">Workflow</p>
+              <h3>{plannerView === "navigate" ? "Snel Navigeren" : "Auto vs OV Vergelijken"}</h3>
+            </div>
+            <div className="segment">
+              <button
+                type="button"
+                className={plannerView === "navigate" ? "segment-active" : ""}
+                onClick={() => setPlannerView("navigate")}
+              >
+                Navigatie
+              </button>
+              <button
+                type="button"
+                className={plannerView === "compare" ? "segment-active" : ""}
+                onClick={() => setPlannerView("compare")}
+              >
+                Vergelijken
+              </button>
+            </div>
+
+            {activeResult && (
+              <div className="planner-quick-stats">
+                <div>
+                  <p>Auto</p>
+                  <strong>{formatCurrency(activeResult.cost.costOneWay)}</strong>
+                </div>
+                <div>
+                  <p>OV</p>
+                  <strong>
+                    {cheapestTransitOption ? formatCurrency(cheapestTransitOption.estimatedCost) : "nog niet berekend"}
+                  </strong>
+                </div>
+              </div>
+            )}
+
+            {compareDelta !== null && (
+              <p className="planner-delta">
+                {compareDelta <= 0
+                  ? `OV is circa ${formatCurrency(Math.abs(compareDelta))} goedkoper.`
+                  : `Auto is circa ${formatCurrency(compareDelta)} goedkoper.`}
+              </p>
+            )}
+
+            {plannerView === "navigate" && activeResult && !navigationActive && (
+              <button type="button" onClick={startNavigation}>
+                Start navigatie direct
+              </button>
+            )}
+          </section>
+
           <RouteForm
             origin={origin}
             destination={destination}
             tripType={tripType}
             transitDateTimeLocal={transitDateTimeLocal}
             transitTimeType={transitTimeType}
+            comparisonMode={plannerView === "compare"}
             profile={profile}
             loading={loading}
             locatingOrigin={locatingOrigin}
@@ -501,38 +585,44 @@ export const App = () => {
             }}
             onOpenProfile={() => setModalOpen(true)}
             onUseCurrentLocation={handleUseCurrentLocationAsOrigin}
+            onSwapLocations={() => {
+              setOrigin(destination);
+              setDestination(origin);
+            }}
             onSubmit={handleCalculate}
           />
 
-          <LiveNavigationCard
-            hasRoute={Boolean(activeResult)}
-            navigationActive={navigationActive}
-            permissionState={permissionState}
-            gpsError={gpsError}
-            currentInstruction={currentInstruction}
-            nextInstruction={nextInstruction}
-            remainingDistanceKm={liveMetrics ? liveMetrics.remainingDistanceMeters / 1000 : null}
-            remainingDurationMinutes={liveMetrics ? liveMetrics.remainingDurationSeconds / 60 : null}
-            speedKmh={currentPosition?.speedKmh ?? null}
-            distanceToInstructionMeters={distanceToInstructionMeters}
-            offRoute={offRoute}
-            rerouting={rerouting}
-            focusModeActive={focusModeActive}
-            onStart={startNavigation}
-            onStop={stopNavigation}
-            onToggleFocusMode={() => {
-              setFocusModeActive((value) => {
-                const nextValue = !value;
+          {plannerView === "navigate" && (
+            <LiveNavigationCard
+              hasRoute={Boolean(activeResult)}
+              navigationActive={navigationActive}
+              permissionState={permissionState}
+              gpsError={gpsError}
+              currentInstruction={currentInstruction}
+              nextInstruction={nextInstruction}
+              remainingDistanceKm={liveMetrics ? liveMetrics.remainingDistanceMeters / 1000 : null}
+              remainingDurationMinutes={liveMetrics ? liveMetrics.remainingDurationSeconds / 60 : null}
+              speedKmh={currentPosition?.speedKmh ?? null}
+              distanceToInstructionMeters={distanceToInstructionMeters}
+              offRoute={offRoute}
+              rerouting={rerouting}
+              focusModeActive={focusModeActive}
+              onStart={startNavigation}
+              onStop={stopNavigation}
+              onToggleFocusMode={() => {
+                setFocusModeActive((value) => {
+                  const nextValue = !value;
 
-                if (nextValue) {
-                  setFocusFollowPosition(true);
-                  setFocusRecenterToken((token) => token + 1);
-                }
+                  if (nextValue) {
+                    setFocusFollowPosition(true);
+                    setFocusRecenterToken((token) => token + 1);
+                  }
 
-                return nextValue;
-              });
-            }}
-          />
+                  return nextValue;
+                });
+              }}
+            />
+          )}
 
           {error && <ErrorNotice message={error} />}
           {result && (
@@ -540,6 +630,7 @@ export const App = () => {
               result={result}
               tripType={tripType}
               selectedRouteId={activeRouteOption?.id ?? selectedRouteId}
+              viewMode={plannerView}
               onSelectRoute={(routeId) => {
                 setSelectedRouteId(routeId);
                 setUpcomingInstructionIndex(0);
@@ -548,12 +639,14 @@ export const App = () => {
             />
           )}
 
-          <TransitResultCard
-            result={transitResult}
-            loading={loading}
-            error={transitError}
-            carCostOneWay={activeResult?.cost.costOneWay ?? null}
-          />
+          {plannerView === "compare" && (
+            <TransitResultCard
+              result={transitResult}
+              loading={loading}
+              error={transitError}
+              carCostOneWay={activeResult?.cost.costOneWay ?? null}
+            />
+          )}
         </div>
 
         <div className="right-column">

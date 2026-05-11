@@ -5,6 +5,7 @@ interface ResultCardProps {
   tripType: TripType;
   selectedRouteId: string;
   onSelectRoute: (routeId: string) => void;
+  viewMode?: "navigate" | "compare";
 }
 
 const formatCurrency = (value: number) =>
@@ -13,7 +14,13 @@ const formatCurrency = (value: number) =>
     currency: "EUR"
   }).format(value);
 
-export const ResultCard = ({ result, tripType, selectedRouteId, onSelectRoute }: ResultCardProps) => {
+export const ResultCard = ({
+  result,
+  tripType,
+  selectedRouteId,
+  onSelectRoute,
+  viewMode = "compare"
+}: ResultCardProps) => {
   const selectedRouteOption =
     result.routeOptions.find((routeOption) => routeOption.id === selectedRouteId) ??
     result.routeOptions.find((routeOption) => routeOption.id === result.selectedRouteId) ??
@@ -25,12 +32,13 @@ export const ResultCard = ({ result, tripType, selectedRouteId, onSelectRoute }:
     selectedRouteOption?.consumptionPer100KmAdjusted ?? result.vehicleProfile.consumptionPer100Km;
   const unitLabel = activeCost.energyUnit === "kWh" ? "kWh" : "liter";
   const showRouteOptions = result.routeOptions.length > 1;
+  const compact = viewMode === "navigate";
 
   return (
-    <section className="card result-card" aria-live="polite">
+    <section className={`card result-card ${compact ? "result-card-compact" : ""}`} aria-live="polite">
       {showRouteOptions && (
         <div className="route-options">
-          <p className="result-label">Route suggesties</p>
+          <p className="result-label">{compact ? "Routekeuze" : "Route suggesties"}</p>
           <div className="route-options-grid">
             {result.routeOptions.map((routeOption) => {
               const isSelected = routeOption.id === selectedRouteOption?.id;
@@ -50,7 +58,7 @@ export const ResultCard = ({ result, tripType, selectedRouteId, onSelectRoute }:
                       {routeOption.route.distanceKm.toFixed(1)} km • {routeOption.route.durationMinutes} min
                     </small>
                   </div>
-                  <p>{routeOption.description}</p>
+                  {!compact && <p>{routeOption.description}</p>}
                 </button>
               );
             })}
@@ -86,11 +94,13 @@ export const ResultCard = ({ result, tripType, selectedRouteId, onSelectRoute }:
         </div>
       </div>
 
-      <p className="explanation">
-        Gebaseerd op {activeRoute.distanceKm.toFixed(1)} km, {activeConsumptionPer100Km.toFixed(1)}
-        {unitLabel === "kWh" ? " kWh" : " l"}/100 km en {formatCurrency(result.vehicleProfile.energyPrice)} per{" "}
-        {unitLabel}. Verbruik is route-afhankelijk geschat op basis van snelweg/stad-verhouding.
-      </p>
+      {!compact && (
+        <p className="explanation">
+          Gebaseerd op {activeRoute.distanceKm.toFixed(1)} km, {activeConsumptionPer100Km.toFixed(1)}
+          {unitLabel === "kWh" ? " kWh" : " l"}/100 km en {formatCurrency(result.vehicleProfile.energyPrice)} per{" "}
+          {unitLabel}. Verbruik is route-afhankelijk geschat op basis van snelweg/stad-verhouding.
+        </p>
+      )}
     </section>
   );
 };

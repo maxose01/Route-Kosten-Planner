@@ -35,6 +35,12 @@ const parseLocalDateTimeToIso = (value) => {
     }
     return parsed.toISOString();
 };
+const formatCurrency = (value) => {
+    return new Intl.NumberFormat("nl-NL", {
+        style: "currency",
+        currency: "EUR"
+    }).format(value);
+};
 const isGeolocationAllowedByContext = () => {
     if (typeof window === "undefined") {
         return true;
@@ -71,6 +77,7 @@ export const App = () => {
     const [transitResult, setTransitResult] = useState(null);
     const [transitError, setTransitError] = useState(null);
     const [selectedRouteId, setSelectedRouteId] = useState("");
+    const [plannerView, setPlannerView] = useState("navigate");
     const [navigationActive, setNavigationActive] = useState(false);
     const [permissionState, setPermissionState] = useState("idle");
     const [gpsError, setGpsError] = useState(null);
@@ -116,6 +123,23 @@ export const App = () => {
         const decoded = polyline.decode(activeResult.route.polyline);
         return decoded.map(([lat, lng]) => ({ lat, lng }));
     }, [activeResult?.route.polyline]);
+    const cheapestTransitOption = useMemo(() => {
+        if (!transitResult?.options.length) {
+            return null;
+        }
+        return transitResult.options.reduce((cheapest, option) => {
+            if (!cheapest || option.estimatedCost < cheapest.estimatedCost) {
+                return option;
+            }
+            return cheapest;
+        }, transitResult.options[0]);
+    }, [transitResult]);
+    const compareDelta = useMemo(() => {
+        if (!activeResult || !cheapestTransitOption) {
+            return null;
+        }
+        return cheapestTransitOption.estimatedCost - activeResult.cost.costOneWay;
+    }, [activeResult, cheapestTransitOption]);
     const liveMetrics = useMemo(() => {
         if (!currentPosition || routePoints.length < 2 || !activeResult) {
             return null;
@@ -370,7 +394,9 @@ export const App = () => {
             setRerouting(false);
         });
     }, [navigationActive, currentPosition, liveMetrics, activeResult, offRoute, destination, profile, tripType]);
-    return (_jsxs(_Fragment, { children: [_jsxs("div", { className: "layout", children: [_jsxs("div", { className: "left-column", children: [_jsx(RouteForm, { origin: origin, destination: destination, tripType: tripType, transitDateTimeLocal: transitDateTimeLocal, transitTimeType: transitTimeType, profile: profile, loading: loading, locatingOrigin: locatingOrigin, onChange: (input) => {
+    return (_jsxs(_Fragment, { children: [_jsxs("div", { className: "layout", children: [_jsxs("div", { className: "left-column", children: [_jsxs("section", { className: "card planner-view-card", children: [_jsxs("div", { children: [_jsx("p", { className: "result-label", children: "Workflow" }), _jsx("h3", { children: plannerView === "navigate" ? "Snel Navigeren" : "Auto vs OV Vergelijken" })] }), _jsxs("div", { className: "segment", children: [_jsx("button", { type: "button", className: plannerView === "navigate" ? "segment-active" : "", onClick: () => setPlannerView("navigate"), children: "Navigatie" }), _jsx("button", { type: "button", className: plannerView === "compare" ? "segment-active" : "", onClick: () => setPlannerView("compare"), children: "Vergelijken" })] }), activeResult && (_jsxs("div", { className: "planner-quick-stats", children: [_jsxs("div", { children: [_jsx("p", { children: "Auto" }), _jsx("strong", { children: formatCurrency(activeResult.cost.costOneWay) })] }), _jsxs("div", { children: [_jsx("p", { children: "OV" }), _jsx("strong", { children: cheapestTransitOption ? formatCurrency(cheapestTransitOption.estimatedCost) : "nog niet berekend" })] })] })), compareDelta !== null && (_jsx("p", { className: "planner-delta", children: compareDelta <= 0
+                                            ? `OV is circa ${formatCurrency(Math.abs(compareDelta))} goedkoper.`
+                                            : `Auto is circa ${formatCurrency(compareDelta)} goedkoper.` })), plannerView === "navigate" && activeResult && !navigationActive && (_jsx("button", { type: "button", onClick: startNavigation, children: "Start navigatie direct" }))] }), _jsx(RouteForm, { origin: origin, destination: destination, tripType: tripType, transitDateTimeLocal: transitDateTimeLocal, transitTimeType: transitTimeType, comparisonMode: plannerView === "compare", profile: profile, loading: loading, locatingOrigin: locatingOrigin, onChange: (input) => {
                                     if (input.origin !== undefined)
                                         setOrigin(input.origin);
                                     if (input.destination !== undefined)
@@ -381,7 +407,10 @@ export const App = () => {
                                         setTransitDateTimeLocal(input.transitDateTimeLocal);
                                     if (input.transitTimeType !== undefined)
                                         setTransitTimeType(input.transitTimeType);
-                                }, onOpenProfile: () => setModalOpen(true), onUseCurrentLocation: handleUseCurrentLocationAsOrigin, onSubmit: handleCalculate }), _jsx(LiveNavigationCard, { hasRoute: Boolean(activeResult), navigationActive: navigationActive, permissionState: permissionState, gpsError: gpsError, currentInstruction: currentInstruction, nextInstruction: nextInstruction, remainingDistanceKm: liveMetrics ? liveMetrics.remainingDistanceMeters / 1000 : null, remainingDurationMinutes: liveMetrics ? liveMetrics.remainingDurationSeconds / 60 : null, speedKmh: currentPosition?.speedKmh ?? null, distanceToInstructionMeters: distanceToInstructionMeters, offRoute: offRoute, rerouting: rerouting, focusModeActive: focusModeActive, onStart: startNavigation, onStop: stopNavigation, onToggleFocusMode: () => {
+                                }, onOpenProfile: () => setModalOpen(true), onUseCurrentLocation: handleUseCurrentLocationAsOrigin, onSwapLocations: () => {
+                                    setOrigin(destination);
+                                    setDestination(origin);
+                                }, onSubmit: handleCalculate }), plannerView === "navigate" && (_jsx(LiveNavigationCard, { hasRoute: Boolean(activeResult), navigationActive: navigationActive, permissionState: permissionState, gpsError: gpsError, currentInstruction: currentInstruction, nextInstruction: nextInstruction, remainingDistanceKm: liveMetrics ? liveMetrics.remainingDistanceMeters / 1000 : null, remainingDurationMinutes: liveMetrics ? liveMetrics.remainingDurationSeconds / 60 : null, speedKmh: currentPosition?.speedKmh ?? null, distanceToInstructionMeters: distanceToInstructionMeters, offRoute: offRoute, rerouting: rerouting, focusModeActive: focusModeActive, onStart: startNavigation, onStop: stopNavigation, onToggleFocusMode: () => {
                                     setFocusModeActive((value) => {
                                         const nextValue = !value;
                                         if (nextValue) {
@@ -390,11 +419,11 @@ export const App = () => {
                                         }
                                         return nextValue;
                                     });
-                                } }), error && _jsx(ErrorNotice, { message: error }), result && (_jsx(ResultCard, { result: result, tripType: tripType, selectedRouteId: activeRouteOption?.id ?? selectedRouteId, onSelectRoute: (routeId) => {
+                                } })), error && _jsx(ErrorNotice, { message: error }), result && (_jsx(ResultCard, { result: result, tripType: tripType, selectedRouteId: activeRouteOption?.id ?? selectedRouteId, viewMode: plannerView, onSelectRoute: (routeId) => {
                                     setSelectedRouteId(routeId);
                                     setUpcomingInstructionIndex(0);
                                     announcedInstructionRef.current = null;
-                                } })), _jsx(TransitResultCard, { result: transitResult, loading: loading, error: transitError, carCostOneWay: activeResult?.cost.costOneWay ?? null })] }), _jsx("div", { className: "right-column", children: _jsx(RouteMap, { result: activeResult, currentPosition: currentPosition, navigationActive: navigationActive, offRoute: offRoute }) })] }), _jsx(VehicleProfileModal, { open: modalOpen, initialValue: profile, onClose: () => setModalOpen(false), onSave: (newProfile) => setProfile(newProfile) }), _jsx(DrivingModeOverlay, { active: navigationActive && focusModeActive, result: activeResult, currentPosition: currentPosition, navigationActive: navigationActive, followPosition: focusFollowPosition, recenterToken: focusRecenterToken, orientationMode: orientationMode, onToggleOrientation: () => setOrientationMode((mode) => (mode === "track-up" ? "north-up" : "track-up")), onMapInteraction: () => setFocusFollowPosition(false), onRecenter: () => {
+                                } })), plannerView === "compare" && (_jsx(TransitResultCard, { result: transitResult, loading: loading, error: transitError, carCostOneWay: activeResult?.cost.costOneWay ?? null }))] }), _jsx("div", { className: "right-column", children: _jsx(RouteMap, { result: activeResult, currentPosition: currentPosition, navigationActive: navigationActive, offRoute: offRoute }) })] }), _jsx(VehicleProfileModal, { open: modalOpen, initialValue: profile, onClose: () => setModalOpen(false), onSave: (newProfile) => setProfile(newProfile) }), _jsx(DrivingModeOverlay, { active: navigationActive && focusModeActive, result: activeResult, currentPosition: currentPosition, navigationActive: navigationActive, followPosition: focusFollowPosition, recenterToken: focusRecenterToken, orientationMode: orientationMode, onToggleOrientation: () => setOrientationMode((mode) => (mode === "track-up" ? "north-up" : "track-up")), onMapInteraction: () => setFocusFollowPosition(false), onRecenter: () => {
                     setFocusFollowPosition(true);
                     setFocusRecenterToken((token) => token + 1);
                 }, offRoute: offRoute, rerouting: rerouting, currentInstruction: currentInstruction, nextInstruction: nextInstruction, distanceToInstructionMeters: distanceToInstructionMeters, remainingDistanceKm: liveMetrics ? liveMetrics.remainingDistanceMeters / 1000 : null, remainingDurationMinutes: liveMetrics ? liveMetrics.remainingDurationSeconds / 60 : null, speedKmh: currentPosition?.speedKmh ?? null, onStopNavigation: stopNavigation })] }));

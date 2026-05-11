@@ -46,6 +46,7 @@ export const TransitResultCard = ({ result, loading, error, carCostOneWay }: Tra
   const cheapestOption = result ? getCheapestOption(result.options) : null;
   const costDelta =
     cheapestOption && carCostOneWay !== null ? cheapestOption.estimatedCost - carCostOneWay : null;
+  const visibleOptions = result?.options.slice(0, 3) ?? [];
 
   return (
     <section className="card transit-card" aria-live="polite">
@@ -77,7 +78,7 @@ export const TransitResultCard = ({ result, loading, error, carCostOneWay }: Tra
           )}
 
           <div className="transit-options">
-            {result.options.map((option, index) => (
+            {visibleOptions.map((option, index) => (
               <article key={option.id} className="transit-option">
                 <div className="transit-option-head">
                   <strong>Optie {index + 1}</strong>
@@ -88,14 +89,20 @@ export const TransitResultCard = ({ result, loading, error, carCostOneWay }: Tra
                   {option.transfers} overstap{option.transfers === 1 ? "" : "pen"}
                 </p>
                 <p>{option.summary}</p>
-                <ul className="transit-leg-list">
-                  {option.legs.slice(0, 4).map((leg, legIndex) => (
-                    <li key={`${option.id}-leg-${legIndex}`}>
-                      {leg.modeLabel}
-                      {leg.lineLabel ? ` ${leg.lineLabel}` : ""}: {leg.fromName} → {leg.toName}
-                    </li>
-                  ))}
-                </ul>
+                <span className="transit-source-chip">
+                  {option.fareSource === "api" ? "Prijs uit OV-data" : "Geschatte prijs"}
+                </span>
+                <details className="transit-option-details">
+                  <summary>Toon trajectstappen</summary>
+                  <ul className="transit-leg-list">
+                    {option.legs.slice(0, 5).map((leg, legIndex) => (
+                      <li key={`${option.id}-leg-${legIndex}`}>
+                        {leg.modeLabel}
+                        {leg.lineLabel ? ` ${leg.lineLabel}` : ""}: {leg.fromName} → {leg.toName}
+                      </li>
+                    ))}
+                  </ul>
+                </details>
               </article>
             ))}
           </div>

@@ -13,6 +13,7 @@ interface RouteFormProps {
   tripType: TripType;
   transitDateTimeLocal: string;
   transitTimeType: TransitTimeType;
+  comparisonMode: boolean;
   profile: VehicleProfile;
   loading: boolean;
   locatingOrigin: boolean;
@@ -25,6 +26,7 @@ interface RouteFormProps {
   }) => void;
   onOpenProfile: () => void;
   onUseCurrentLocation: () => void;
+  onSwapLocations: () => void;
   onSubmit: () => void;
 }
 
@@ -34,14 +36,17 @@ export const RouteForm = ({
   tripType,
   transitDateTimeLocal,
   transitTimeType,
+  comparisonMode,
   profile,
   loading,
   locatingOrigin,
   onChange,
   onOpenProfile,
   onUseCurrentLocation,
+  onSwapLocations,
   onSubmit
 }: RouteFormProps) => {
+  const [advancedOpen, setAdvancedOpen] = useState(comparisonMode);
   const [destinationSuggestions, setDestinationSuggestions] = useState<LocationSuggestion[]>([]);
   const [loadingDestinationSuggestions, setLoadingDestinationSuggestions] = useState(false);
   const [destinationSuggestionLookupDone, setDestinationSuggestionLookupDone] = useState(false);
@@ -56,6 +61,12 @@ export const RouteForm = ({
       (loadingDestinationSuggestions || destinationSuggestionLookupDone),
     [destinationSuggestionsOpen, trimmedDestination.length, loadingDestinationSuggestions, destinationSuggestionLookupDone]
   );
+
+  useEffect(() => {
+    if (comparisonMode) {
+      setAdvancedOpen(true);
+    }
+  }, [comparisonMode]);
 
   useEffect(() => {
     if (trimmedDestination.length < MIN_AUTOCOMPLETE_QUERY_LENGTH) {
@@ -145,136 +156,152 @@ export const RouteForm = ({
 
   return (
     <section className="card form-card">
-      <h1>Routekosten + Live Navigatie</h1>
-      <p className="muted">Plan je route, start rijmodus en volg live turn-by-turn navigatie.</p>
+      <h1>Plan Je Rit</h1>
+      <p className="muted">Snel van A naar B, met direct inzicht in kosten.</p>
 
-      <label>
-        Van
-        <input
-          placeholder="Bijv. Den Haag"
-          value={origin}
-          onChange={(event) => onChange({ origin: event.target.value })}
-        />
-      </label>
+      <div className="route-input-grid">
+        <label>
+          Van
+          <input
+            placeholder="Bijv. Den Haag"
+            value={origin}
+            onChange={(event) => onChange({ origin: event.target.value })}
+          />
+        </label>
 
-      <div className="inline-actions">
+        <label>
+          Naar
+          <div className="autocomplete">
+            <input
+              placeholder="Wat is je bestemming?"
+              value={destination}
+              autoComplete="off"
+              onFocus={() => setDestinationSuggestionsOpen(true)}
+              onBlur={() => {
+                window.setTimeout(() => setDestinationSuggestionsOpen(false), 120);
+              }}
+              onKeyDown={handleDestinationKeyDown}
+              onChange={(event) => {
+                onChange({ destination: event.target.value });
+                setDestinationSuggestionsOpen(true);
+              }}
+            />
+
+            {canShowDestinationSuggestions && (
+              <ul className="autocomplete-list" role="listbox" aria-label="Locatiesuggesties">
+                {loadingDestinationSuggestions && (
+                  <li className="autocomplete-item autocomplete-item-muted">Suggesties laden...</li>
+                )}
+
+                {!loadingDestinationSuggestions &&
+                  destinationSuggestions.map((suggestion, index) => (
+                    <li
+                      key={`${suggestion.value}-${index}`}
+                      role="option"
+                      aria-selected={activeDestinationSuggestionIndex === index}
+                      className={`autocomplete-item ${activeDestinationSuggestionIndex === index ? "autocomplete-item-active" : ""}`}
+                      onMouseDown={(event) => event.preventDefault()}
+                      onClick={() => selectDestinationSuggestion(suggestion)}
+                    >
+                      {suggestion.label}
+                    </li>
+                  ))}
+
+                {!loadingDestinationSuggestions && destinationSuggestions.length === 0 && (
+                  <li className="autocomplete-item autocomplete-item-muted">Geen suggesties gevonden.</li>
+                )}
+              </ul>
+            )}
+          </div>
+        </label>
+      </div>
+
+      <div className="inline-actions route-inline-actions">
         <button type="button" className="ghost" onClick={onUseCurrentLocation} disabled={locatingOrigin || loading}>
           {locatingOrigin ? "Locatie ophalen..." : "Gebruik huidige locatie"}
         </button>
-      </div>
-
-      <label>
-        Naar
-        <div className="autocomplete">
-          <input
-            placeholder="Wat is je bestemming?"
-            value={destination}
-            autoComplete="off"
-            onFocus={() => setDestinationSuggestionsOpen(true)}
-            onBlur={() => {
-              window.setTimeout(() => setDestinationSuggestionsOpen(false), 120);
-            }}
-            onKeyDown={handleDestinationKeyDown}
-            onChange={(event) => {
-              onChange({ destination: event.target.value });
-              setDestinationSuggestionsOpen(true);
-            }}
-          />
-
-          {canShowDestinationSuggestions && (
-            <ul className="autocomplete-list" role="listbox" aria-label="Locatiesuggesties">
-              {loadingDestinationSuggestions && (
-                <li className="autocomplete-item autocomplete-item-muted">Suggesties laden...</li>
-              )}
-
-              {!loadingDestinationSuggestions &&
-                destinationSuggestions.map((suggestion, index) => (
-                  <li
-                    key={`${suggestion.value}-${index}`}
-                    role="option"
-                    aria-selected={activeDestinationSuggestionIndex === index}
-                    className={`autocomplete-item ${activeDestinationSuggestionIndex === index ? "autocomplete-item-active" : ""}`}
-                    onMouseDown={(event) => event.preventDefault()}
-                    onClick={() => selectDestinationSuggestion(suggestion)}
-                  >
-                    {suggestion.label}
-                  </li>
-                ))}
-
-              {!loadingDestinationSuggestions && destinationSuggestions.length === 0 && (
-                <li className="autocomplete-item autocomplete-item-muted">Geen suggesties gevonden.</li>
-              )}
-            </ul>
-          )}
-        </div>
-      </label>
-
-      <fieldset>
-        <legend>Rit type</legend>
-        <div className="segment">
-          <button
-            type="button"
-            className={tripType === "one-way" ? "segment-active" : ""}
-            onClick={() => onChange({ tripType: "one-way" })}
-          >
-            Enkele reis
-          </button>
-          <button
-            type="button"
-            className={tripType === "return" ? "segment-active" : ""}
-            onClick={() => onChange({ tripType: "return" })}
-          >
-            Retour
-          </button>
-        </div>
-      </fieldset>
-
-      <fieldset>
-        <legend>OV planning</legend>
-        <div className="segment">
-          <button
-            type="button"
-            className={transitTimeType === "departure" ? "segment-active" : ""}
-            onClick={() => onChange({ transitTimeType: "departure" })}
-          >
-            Vertrek om
-          </button>
-          <button
-            type="button"
-            className={transitTimeType === "arrival" ? "segment-active" : ""}
-            onClick={() => onChange({ transitTimeType: "arrival" })}
-          >
-            Aankomst om
-          </button>
-        </div>
-      </fieldset>
-
-      <label>
-        Datum en tijd
-        <input
-          type="datetime-local"
-          value={transitDateTimeLocal}
-          onChange={(event) => onChange({ transitDateTimeLocal: event.target.value })}
-        />
-      </label>
-      <p className="muted form-helper">Nodig om OV-routes en prijzen te vergelijken.</p>
-
-      <div className="profile-summary">
-        <div>
-          <p>Auto/profiel</p>
-          <strong>{profile.name}</strong>
-          <small>
-            {profile.consumptionPer100Km.toFixed(1)} {profile.fuelType === "electric" ? "kWh" : "l"}/100 km • EUR {profile.energyPrice.toFixed(2)}
-          </small>
-        </div>
-        <button type="button" className="ghost" onClick={onOpenProfile}>
-          Aanpassen
+        <button type="button" className="ghost" onClick={onSwapLocations} disabled={loading}>
+          Wissel van/naar
         </button>
       </div>
 
-      <button type="button" onClick={onSubmit} disabled={loading}>
-        {loading ? "Route berekenen..." : "Bereken route + ritkosten"}
+      <button type="button" className="primary-cta" onClick={onSubmit} disabled={loading}>
+        {loading ? "Route berekenen..." : "Bereken route"}
       </button>
+
+      <details
+        className="advanced-settings"
+        open={advancedOpen}
+        onToggle={(event) => setAdvancedOpen(event.currentTarget.open)}
+      >
+        <summary>Meer instellingen</summary>
+
+        <div className="advanced-settings-body">
+          <fieldset>
+            <legend>Rit type</legend>
+            <div className="segment">
+              <button
+                type="button"
+                className={tripType === "one-way" ? "segment-active" : ""}
+                onClick={() => onChange({ tripType: "one-way" })}
+              >
+                Enkele reis
+              </button>
+              <button
+                type="button"
+                className={tripType === "return" ? "segment-active" : ""}
+                onClick={() => onChange({ tripType: "return" })}
+              >
+                Retour
+              </button>
+            </div>
+          </fieldset>
+
+          <fieldset>
+            <legend>OV planning</legend>
+            <div className="segment">
+              <button
+                type="button"
+                className={transitTimeType === "departure" ? "segment-active" : ""}
+                onClick={() => onChange({ transitTimeType: "departure" })}
+              >
+                Vertrek om
+              </button>
+              <button
+                type="button"
+                className={transitTimeType === "arrival" ? "segment-active" : ""}
+                onClick={() => onChange({ transitTimeType: "arrival" })}
+              >
+                Aankomst om
+              </button>
+            </div>
+          </fieldset>
+
+          <label>
+            Datum en tijd
+            <input
+              type="datetime-local"
+              value={transitDateTimeLocal}
+              onChange={(event) => onChange({ transitDateTimeLocal: event.target.value })}
+            />
+          </label>
+          <p className="muted form-helper">Nodig om OV-routes en prijzen te vergelijken.</p>
+
+          <div className="profile-summary">
+            <div>
+              <p>Auto/profiel</p>
+              <strong>{profile.name}</strong>
+              <small>
+                {profile.consumptionPer100Km.toFixed(1)} {profile.fuelType === "electric" ? "kWh" : "l"}/100 km • EUR{" "}
+                {profile.energyPrice.toFixed(2)}
+              </small>
+            </div>
+            <button type="button" className="ghost" onClick={onOpenProfile}>
+              Aanpassen
+            </button>
+          </div>
+        </div>
+      </details>
     </section>
   );
 };
