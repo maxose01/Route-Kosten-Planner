@@ -1,14 +1,16 @@
 import type { NextFunction, Request, Response } from "express";
 import { ZodError } from "zod";
 
-import { AppError } from "../types/errors";
+import { AppError } from "../types/errors.js";
 
 export const errorHandler = (error: unknown, _request: Request, response: Response, _next: NextFunction): void => {
-  if (process.env.NODE_ENV !== "production") {
-    console.error(error);
-  }
-
   if (error instanceof AppError) {
+    if (process.env.NODE_ENV !== "production") {
+      console.error(error);
+    } else {
+      console.error(`[API] ${error.code} (${error.statusCode}): ${error.message}`);
+    }
+
     response.status(error.statusCode).json({
       error: {
         code: error.code,
@@ -28,6 +30,8 @@ export const errorHandler = (error: unknown, _request: Request, response: Respon
     });
     return;
   }
+
+  console.error("[API] Onverwachte fout:", error);
 
   response.status(500).json({
     error: {

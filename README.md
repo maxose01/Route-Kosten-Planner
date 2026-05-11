@@ -208,6 +208,25 @@ Request:
 }
 ```
 
+### `GET /api/locations/suggest?q=haar&limit=5`
+
+Response:
+
+```json
+{
+  "suggestions": [
+    {
+      "label": "Haarlem, Noord-Holland, Nederland",
+      "value": "Haarlem, Noord-Holland, Nederland",
+      "location": {
+        "lat": 52.3874,
+        "lng": 4.6462
+      }
+    }
+  ]
+}
+```
+
 Response:
 
 ```json

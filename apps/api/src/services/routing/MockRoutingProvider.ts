@@ -1,8 +1,22 @@
-import type { RouteResult } from "@route-cost/shared";
+import type { LocationSuggestion, RouteResult } from "@route-cost/shared";
 
-import type { RoutingProvider } from "./RoutingProvider";
+import type { RoutingProvider } from "./RoutingProvider.js";
 
 export class MockRoutingProvider implements RoutingProvider {
+  async suggestLocations(query: string, limit: number): Promise<LocationSuggestion[]> {
+    const mockLocations: LocationSuggestion[] = [
+      { label: "Haarlem, Noord-Holland, Nederland", value: "Haarlem", location: { lat: 52.3874, lng: 4.6462 } },
+      { label: "Den Haag, Zuid-Holland, Nederland", value: "Den Haag", location: { lat: 52.0705, lng: 4.3007 } },
+      { label: "Amsterdam, Noord-Holland, Nederland", value: "Amsterdam", location: { lat: 52.3676, lng: 4.9041 } },
+      { label: "Rotterdam, Zuid-Holland, Nederland", value: "Rotterdam", location: { lat: 51.9244, lng: 4.4777 } },
+      { label: "Utrecht, Utrecht, Nederland", value: "Utrecht", location: { lat: 52.0907, lng: 5.1214 } }
+    ];
+
+    const normalizedQuery = query.trim().toLowerCase();
+
+    return mockLocations.filter((item) => item.label.toLowerCase().includes(normalizedQuery)).slice(0, limit);
+  }
+
   async calculateRoute(origin: string, destination: string): Promise<RouteResult> {
     return {
       origin,

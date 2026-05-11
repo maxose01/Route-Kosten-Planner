@@ -1,10 +1,12 @@
-import type { RouteInstruction, RouteResult } from "@route-cost/shared";
+import type { LocationSuggestion, RouteInstruction, RouteResult } from "@route-cost/shared";
 
-import { env } from "../../config/env";
-import { AppError } from "../../types/errors";
-import type { RoutingProvider } from "./RoutingProvider";
+import { env } from "../../config/env.js";
+import { AppError } from "../../types/errors.js";
+import type { RoutingProvider } from "./RoutingProvider.js";
 
 interface GeocodeFeature {
+  place_name?: string;
+  text?: string;
   center: [number, number];
 }
 
@@ -47,6 +49,7 @@ interface MapboxErrorResponse {
 }
 
 const COORDINATE_INPUT = /^\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*$/;
+const MAX_SUGGESTION_LIMIT = 8;
 
 export class MapboxRoutingProvider implements RoutingProvider {
   private readonly token: string;
@@ -85,7 +88,10 @@ export class MapboxRoutingProvider implements RoutingProvider {
       throw new AppError("ROUTING_PROVIDER_ERROR", errorMessage, 502);
     }
 
-    const directionsData = (await directionsResponse.json()) as DirectionsResponse;
+    const directionsData = await this.parseMapboxJson<DirectionsResponse>(
+      directionsResponse,
+      "Kaartdienst gaf een onleesbare route-response terug."
+    );
     if (directionsData.code === "NoRoute") {
       throw new AppError("ROUTE_NOT_FOUND", "Geen route gevonden tussen deze locaties.", 404);
     }
@@ -106,6 +112,33 @@ export class MapboxRoutingProvider implements RoutingProvider {
       polyline: firstRoute.geometry,
       instructions
     };
+  }
+
+  async suggestLocations(query: string, limit: number): Promise<LocationSuggestion[]> {
+    const trimmedQuery = query.trim();
+
+    if (!trimmedQuery) {
+      return [];
+    }
+
+    const normalizedLimit = Math.min(Math.max(Math.round(limit), 1), MAX_SUGGESTION_LIMIT);
+    const features = await this.fetchGeocodeFeatures(trimmedQuery, normalizedLimit);
+
+    return features
+      .filter((feature) => Array.isArray(feature.center) && feature.center.length === 2)
+      .map((feature) => {
+        const [lng, lat] = feature.center;
+        const label = feature.place_name ?? feature.text ?? `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+
+        return {
+          label,
+          value: label,
+          location: {
+            lat,
+            lng
+          }
+        };
+      });
   }
 
   private async resolveCoordinates(location: string): Promise<[number, number]> {
@@ -177,11 +210,24 @@ export class MapboxRoutingProvider implements RoutingProvider {
   }
 
   private async geocode(location: string): Promise<[number, number]> {
+    const features = await this.fetchGeocodeFeatures(location, 1);
+    const firstFeature = features[0];
+
+    if (!firstFeature) {
+      throw new AppError("ROUTE_NOT_FOUND", `Locatie niet gevonden: ${location}.`, 404);
+    }
+
+    return firstFeature.center;
+  }
+
+  private async fetchGeocodeFeatures(location: string, limit: number): Promise<GeocodeFeature[]> {
     const geocodeUrl = new URL(
       `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(location)}.json`
     );
 
-    geocodeUrl.searchParams.set("limit", "1");
+    geocodeUrl.searchParams.set("autocomplete", "true");
+    geocodeUrl.searchParams.set("language", "nl");
+    geocodeUrl.searchParams.set("limit", String(limit));
     geocodeUrl.searchParams.set("access_token", this.token);
 
     const geocodeResponse = await this.safeFetch(geocodeUrl);
@@ -194,14 +240,12 @@ export class MapboxRoutingProvider implements RoutingProvider {
       throw new AppError("ROUTING_PROVIDER_ERROR", errorMessage, 502);
     }
 
-    const geocodeData = (await geocodeResponse.json()) as GeocodeResponse;
-    const firstFeature = geocodeData.features?.[0];
+    const geocodeData = await this.parseMapboxJson<GeocodeResponse>(
+      geocodeResponse,
+      "Kaartdienst gaf een onleesbare geocode-response terug."
+    );
 
-    if (!firstFeature) {
-      throw new AppError("ROUTE_NOT_FOUND", `Locatie niet gevonden: ${location}.`, 404);
-    }
-
-    return firstFeature.center;
+    return geocodeData.features ?? [];
   }
 
   private async safeFetch(url: URL): Promise<Response> {
@@ -229,5 +273,13 @@ export class MapboxRoutingProvider implements RoutingProvider {
     }
 
     return providerMessage ? `${fallbackMessage} (${providerMessage})` : fallbackMessage;
+  }
+
+  private async parseMapboxJson<T>(response: Response, fallbackMessage: string): Promise<T> {
+    try {
+      return (await response.json()) as T;
+    } catch {
+      throw new AppError("ROUTING_PROVIDER_ERROR", fallbackMessage, 502);
+    }
   }
 }

@@ -22,6 +22,15 @@ export interface RouteInstruction {
   };
 }
 
+export interface LocationSuggestion {
+  label: string;
+  value: string;
+  location: {
+    lat: number;
+    lng: number;
+  };
+}
+
 export interface RouteResult {
   origin: string;
   destination: string;
@@ -51,6 +60,10 @@ export interface CalculateRouteResponse {
   route: RouteResult;
   vehicleProfile: VehicleProfile;
   cost: CostResult;
+}
+
+export interface SuggestLocationsResponse {
+  suggestions: LocationSuggestion[];
 }
 
 export interface CalculateCostRequest {

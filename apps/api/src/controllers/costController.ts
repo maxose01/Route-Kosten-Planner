@@ -1,9 +1,9 @@
 import type { Request, Response, NextFunction } from "express";
 import type { CalculateCostRequest } from "@route-cost/shared";
 
-import { calculateCostSchema } from "../validators/costValidators";
-import { calculateCost } from "../services/costService";
-import { AppError } from "../types/errors";
+import { calculateCostSchema } from "../validators/costValidators.js";
+import { calculateCost } from "../services/costService.js";
+import { AppError } from "../types/errors.js";
 
 export const calculateCostController = (request: Request, response: Response, next: NextFunction): void => {
   try {

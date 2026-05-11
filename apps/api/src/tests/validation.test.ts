@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { calculateCostSchema } from "../validators/costValidators";
+import { calculateCostSchema } from "../validators/costValidators.js";
 
 describe("calculateCost validation", () => {
   it("geeft validatiefout voor ongeldige waarden", () => {

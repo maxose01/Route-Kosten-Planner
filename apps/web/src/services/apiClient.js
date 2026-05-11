@@ -1,5 +1,6 @@
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? "").replace(/\/+$/, "");
 const ROUTES_ENDPOINT = `${API_BASE_URL}/api/routes/calculate`;
+const LOCATION_SUGGESTIONS_ENDPOINT = `${API_BASE_URL}/api/locations/suggest`;
 export const calculateRoute = async (payload) => {
     let response;
     try {
@@ -22,4 +23,36 @@ export const calculateRoute = async (payload) => {
         throw new Error(errorData?.error?.message ?? "Routeberekening mislukt.");
     }
     return (await response.json());
+};
+export const fetchLocationSuggestions = async (query, options = {}) => {
+    const trimmedQuery = query.trim();
+    if (trimmedQuery.length === 0) {
+        return [];
+    }
+    const params = new URLSearchParams({
+        q: trimmedQuery
+    });
+    if (options.limit !== undefined) {
+        params.set("limit", String(options.limit));
+    }
+    const endpoint = `${LOCATION_SUGGESTIONS_ENDPOINT}?${params.toString()}`;
+    let response;
+    try {
+        response = await fetch(endpoint, { signal: options.signal });
+    }
+    catch (error) {
+        if (error instanceof DOMException && error.name === "AbortError") {
+            throw error;
+        }
+        if (error instanceof TypeError) {
+            throw new Error(`Kan geen locatiesuggesties ophalen via de API (${endpoint}).`);
+        }
+        throw error;
+    }
+    if (!response.ok) {
+        const errorData = (await response.json().catch(() => null));
+        throw new Error(errorData?.error?.message ?? "Locatiesuggesties ophalen mislukt.");
+    }
+    const payload = (await response.json());
+    return payload.suggestions ?? [];
 };

@@ -1,10 +1,10 @@
-import { env } from "../../config/env";
-import { AppError } from "../../types/errors";
-import { GoogleRoutingProvider } from "./GoogleRoutingProvider";
-import { HereRoutingProvider } from "./HereRoutingProvider";
-import { MapboxRoutingProvider } from "./MapboxRoutingProvider";
-import { MockRoutingProvider } from "./MockRoutingProvider";
-import type { RoutingProvider } from "./RoutingProvider";
+import { env } from "../../config/env.js";
+import { AppError } from "../../types/errors.js";
+import { GoogleRoutingProvider } from "./GoogleRoutingProvider.js";
+import { HereRoutingProvider } from "./HereRoutingProvider.js";
+import { MapboxRoutingProvider } from "./MapboxRoutingProvider.js";
+import { MockRoutingProvider } from "./MockRoutingProvider.js";
+import type { RoutingProvider } from "./RoutingProvider.js";
 
 let providerInstance: RoutingProvider | null = null;
 

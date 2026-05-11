@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { calculateCost } from "../services/costService";
+import { calculateCost } from "../services/costService.js";
 
 describe("calculateCost", () => {
   it("berekent 48 km, 6.5 l/100 km, EUR 2.10/l naar EUR 6.55", () => {

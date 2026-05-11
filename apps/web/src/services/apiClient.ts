@@ -1,7 +1,13 @@
-import type { CalculateRouteRequest, CalculateRouteResponse } from "@route-cost/shared";
+import type {
+  CalculateRouteRequest,
+  CalculateRouteResponse,
+  LocationSuggestion,
+  SuggestLocationsResponse
+} from "@route-cost/shared";
 
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? "").replace(/\/+$/, "");
 const ROUTES_ENDPOINT = `${API_BASE_URL}/api/routes/calculate`;
+const LOCATION_SUGGESTIONS_ENDPOINT = `${API_BASE_URL}/api/locations/suggest`;
 
 interface ErrorResponse {
   error?: {
@@ -38,4 +44,54 @@ export const calculateRoute = async (
   }
 
   return (await response.json()) as CalculateRouteResponse;
+};
+
+interface FetchLocationSuggestionsOptions {
+  limit?: number;
+  signal?: AbortSignal;
+}
+
+export const fetchLocationSuggestions = async (
+  query: string,
+  options: FetchLocationSuggestionsOptions = {}
+): Promise<LocationSuggestion[]> => {
+  const trimmedQuery = query.trim();
+
+  if (trimmedQuery.length === 0) {
+    return [];
+  }
+
+  const params = new URLSearchParams({
+    q: trimmedQuery
+  });
+
+  if (options.limit !== undefined) {
+    params.set("limit", String(options.limit));
+  }
+
+  const endpoint = `${LOCATION_SUGGESTIONS_ENDPOINT}?${params.toString()}`;
+
+  let response: Response;
+
+  try {
+    response = await fetch(endpoint, { signal: options.signal });
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") {
+      throw error;
+    }
+
+    if (error instanceof TypeError) {
+      throw new Error(`Kan geen locatiesuggesties ophalen via de API (${endpoint}).`);
+    }
+
+    throw error;
+  }
+
+  if (!response.ok) {
+    const errorData = (await response.json().catch(() => null)) as ErrorResponse | null;
+    throw new Error(errorData?.error?.message ?? "Locatiesuggesties ophalen mislukt.");
+  }
+
+  const payload = (await response.json()) as SuggestLocationsResponse;
+  return payload.suggestions ?? [];
 };

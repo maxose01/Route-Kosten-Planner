@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { tripTypeSchema } from "./common";
+import { tripTypeSchema } from "./common.js";
 
 export const calculateCostSchema = z.object({
   distanceKm: z.number({ invalid_type_error: "Distance must be a number." }).positive("Distance must be greater than 0."),

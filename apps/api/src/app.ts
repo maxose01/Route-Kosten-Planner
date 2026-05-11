@@ -2,10 +2,10 @@ import cors from "cors";
 import express from "express";
 import helmet from "helmet";
 
-import { env } from "./config/env";
-import { errorHandler } from "./middleware/errorHandler";
-import { notFoundHandler } from "./middleware/notFoundHandler";
-import { apiRouter } from "./routes/apiRoutes";
+import { env } from "./config/env.js";
+import { errorHandler } from "./middleware/errorHandler.js";
+import { notFoundHandler } from "./middleware/notFoundHandler.js";
+import { apiRouter } from "./routes/apiRoutes.js";
 
 export const createApp = () => {
   const app = express();

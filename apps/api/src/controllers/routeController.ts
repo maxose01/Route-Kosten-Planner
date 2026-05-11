@@ -1,10 +1,10 @@
 import type { NextFunction, Request, Response } from "express";
 import type { CalculateCostRequest, CalculateRouteRequest, CalculateRouteResponse } from "@route-cost/shared";
 
-import { calculateCost } from "../services/costService";
-import { getRoutingProvider } from "../services/routing/providerFactory";
-import { AppError } from "../types/errors";
-import { calculateRouteSchema } from "../validators/routeValidators";
+import { calculateCost } from "../services/costService.js";
+import { getRoutingProvider } from "../services/routing/providerFactory.js";
+import { AppError } from "../types/errors.js";
+import { calculateRouteSchema } from "../validators/routeValidators.js";
 
 export const calculateRouteController = async (
   request: Request,

@@ -1,10 +1,11 @@
 import { Router } from "express";
 import rateLimit from "express-rate-limit";
 
-import { calculateCostController } from "../controllers/costController";
-import { getHealth } from "../controllers/healthController";
-import { calculateRouteController } from "../controllers/routeController";
-import { AppError } from "../types/errors";
+import { calculateCostController } from "../controllers/costController.js";
+import { getHealth } from "../controllers/healthController.js";
+import { suggestLocationsController } from "../controllers/locationController.js";
+import { calculateRouteController } from "../controllers/routeController.js";
+import { AppError } from "../types/errors.js";
 
 const routeCalculationLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -16,8 +17,19 @@ const routeCalculationLimiter = rateLimit({
   }
 });
 
+const locationSuggestionLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 180,
+  standardHeaders: true,
+  legacyHeaders: false,
+  handler: (_request, _response, next) => {
+    next(new AppError("RATE_LIMITED", "Te veel locatie-aanvragen. Probeer het over een paar minuten opnieuw.", 429));
+  }
+});
+
 export const apiRouter = Router();
 
 apiRouter.get("/health", getHealth);
+apiRouter.get("/locations/suggest", locationSuggestionLimiter, suggestLocationsController);
 apiRouter.post("/costs/calculate", calculateCostController);
 apiRouter.post("/routes/calculate", routeCalculationLimiter, calculateRouteController);

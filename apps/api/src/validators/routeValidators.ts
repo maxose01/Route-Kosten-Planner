@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { tripTypeSchema } from "./common";
+import { tripTypeSchema } from "./common.js";
 
 const vehicleProfileSchema = z.object({
   name: z.string().trim().min(1, "Vehicle profile name is required."),
