@@ -13,7 +13,17 @@ import { calculateRoute } from "./services/apiClient";
 import { estimateRemainingDurationSeconds, findUpcomingInstructionIndex, getDistanceToRouteMeters, getRemainingDistanceMeters, haversineDistanceMeters, toCoordinateInput } from "./utils/navigation";
 const OFF_ROUTE_THRESHOLD_METERS = 120;
 const REROUTE_COOLDOWN_MS = 20000;
+const GEO_SECURE_CONTEXT_MESSAGE = "Locatie werkt alleen via HTTPS (of localhost). Open de app via een https:// URL om GPS te gebruiken.";
+const isGeolocationAllowedByContext = () => {
+    if (typeof window === "undefined") {
+        return true;
+    }
+    return window.isSecureContext;
+};
 const getGeoErrorMessage = (error) => {
+    if (!isGeolocationAllowedByContext()) {
+        return GEO_SECURE_CONTEXT_MESSAGE;
+    }
     switch (error.code) {
         case error.PERMISSION_DENIED:
             return "Locatietoegang geweigerd. Geef GPS-toegang om live te navigeren.";
@@ -103,6 +113,10 @@ export const App = () => {
             setGpsError("Deze browser ondersteunt geen geolocatie.");
             return;
         }
+        if (!isGeolocationAllowedByContext()) {
+            setGpsError(GEO_SECURE_CONTEXT_MESSAGE);
+            return;
+        }
         if (watchIdRef.current !== null) {
             navigator.geolocation.clearWatch(watchIdRef.current);
             watchIdRef.current = null;
@@ -163,6 +177,10 @@ export const App = () => {
     const handleUseCurrentLocationAsOrigin = () => {
         if (!("geolocation" in navigator)) {
             setError("Deze browser ondersteunt geen geolocatie.");
+            return;
+        }
+        if (!isGeolocationAllowedByContext()) {
+            setError(GEO_SECURE_CONTEXT_MESSAGE);
             return;
         }
         setLocatingOrigin(true);
