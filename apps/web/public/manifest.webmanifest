@@ -1,0 +1,9 @@
+{
+  "name": "RouteKosten Planner",
+  "short_name": "RouteKosten",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f2f7f8",
+  "theme_color": "#0f766e",
+  "icons": []
+}
